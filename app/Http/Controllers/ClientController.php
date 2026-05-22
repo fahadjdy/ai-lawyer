@@ -1,0 +1,71 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Enums\ClientType;
+use App\Models\Client;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class ClientController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        $clients = Client::query()
+            ->search($request->string('search')->value() ?: null)
+            ->when($request->filled('type'), fn ($q) => $q->where('type', $request->string('type')))
+            ->withCount('cases')
+            ->latest()
+            ->paginate(15)
+            ->withQueryString()
+            ->through(fn (Client $c) => [
+                'id' => $c->uuid,
+                'name' => $c->name,
+                'company' => $c->company,
+                'email' => $c->email,
+                'phone' => $c->phone,
+                'type' => ['value' => $c->type->value, 'label' => $c->type->label(), 'color' => $c->type->color()],
+                'cases_count' => $c->cases_count,
+                'city' => $c->city,
+                'created_at' => $c->created_at?->toIso8601String(),
+            ]);
+
+        return Inertia::render('clients/Index', [
+            'clients' => $clients,
+            'filters' => $request->only(['search', 'type']),
+            'options' => ['types' => ClientType::options()],
+        ]);
+    }
+
+    public function show(Client $client): Response
+    {
+        $client->load(['cases' => fn ($q) => $q->latest()->limit(20)]);
+
+        return Inertia::render('clients/Show', [
+            'client' => [
+                'id' => $client->uuid,
+                'name' => $client->name,
+                'company' => $client->company,
+                'email' => $client->email,
+                'phone' => $client->phone,
+                'address' => $client->address,
+                'city' => $client->city,
+                'state' => $client->state,
+                'country' => $client->country,
+                'pan' => $client->pan,
+                'gstin' => $client->gstin,
+                'notes' => $client->notes,
+                'type' => ['value' => $client->type->value, 'label' => $client->type->label(), 'color' => $client->type->color()],
+                'cases' => $client->cases->map(fn ($c) => [
+                    'id' => $c->uuid,
+                    'case_number' => $c->case_number,
+                    'title' => $c->title,
+                    'status' => ['label' => $c->status->label(), 'color' => $c->status->color()],
+                ]),
+            ],
+        ]);
+    }
+}
