@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CaseAiAssistant from '@/components/cases/CaseAiAssistant.vue';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +11,7 @@ import { toTypedSchema } from '@vee-validate/zod';
 import { router } from '@inertiajs/vue3';
 import { Link } from '@inertiajs/vue3';
 import { useForm } from 'vee-validate';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import type { EnumOption } from '@/types';
 
 const props = defineProps<{
@@ -83,11 +85,29 @@ const submit = handleSubmit((values) => {
     });
 });
 
+// Snapshot of the fields the AI assistant analyzes (kept reactive).
+const aiFields = computed(() => ({
+    title: title.value,
+    description: description.value,
+    case_type: caseType.value,
+    opposing_party: opposingParty.value,
+    court_name: courtName.value,
+}));
+
+function applySummary(text: string) {
+    description.value = text;
+    toasts.success('Summary applied to the description.');
+}
+function applyPriority(value: string) {
+    priority.value = value;
+}
+
 const inputClass = 'h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400';
 </script>
 
 <template>
-    <form class="space-y-6" @submit.prevent="submit">
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <form class="space-y-6 lg:col-span-2" @submit.prevent="submit">
         <!-- Case details -->
         <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 class="mb-4 text-sm font-semibold text-slate-900">Case details</h2>
@@ -104,10 +124,13 @@ const inputClass = 'h-9 w-full rounded-md border border-slate-200 bg-white px-3 
                 </div>
                 <div>
                     <Label for="client_id">Client</Label>
-                    <select id="client_id" v-model="clientId" :class="inputClass">
-                        <option :value="null">— No client —</option>
-                        <option v-for="c in options.clients" :key="c.id" :value="c.id">{{ c.name }}</option>
-                    </select>
+                    <SearchableSelect
+                        id="client_id"
+                        v-model="clientId"
+                        :options="options.clients.map((c) => ({ value: c.id, label: c.name }))"
+                        placeholder="— No client —"
+                        clearable
+                    />
                     <InputError :message="errors.client_id" />
                 </div>
                 <div>
@@ -162,10 +185,13 @@ const inputClass = 'h-9 w-full rounded-md border border-slate-200 bg-white px-3 
                 <div><Label for="next_hearing_at">Next hearing</Label><input id="next_hearing_at" v-model="nextHearingAt" type="datetime-local" :class="inputClass" /></div>
                 <div>
                     <Label for="lead_lawyer_id">Lead lawyer</Label>
-                    <select id="lead_lawyer_id" v-model="leadLawyerId" :class="inputClass">
-                        <option :value="null">— Unassigned —</option>
-                        <option v-for="l in options.lawyers" :key="l.id" :value="l.id">{{ l.name }}</option>
-                    </select>
+                    <SearchableSelect
+                        id="lead_lawyer_id"
+                        v-model="leadLawyerId"
+                        :options="options.lawyers.map((l) => ({ value: l.id, label: l.name, hint: l.designation ?? undefined }))"
+                        placeholder="— Unassigned —"
+                        clearable
+                    />
                 </div>
             </div>
         </section>
@@ -175,4 +201,15 @@ const inputClass = 'h-9 w-full rounded-md border border-slate-200 bg-white px-3 
             <Button type="submit" :disabled="processing">{{ submitLabel ?? 'Save case' }}</Button>
         </div>
     </form>
+
+        <!-- Right: AI Case Assistant -->
+        <aside class="lg:col-span-1">
+            <CaseAiAssistant
+                class="lg:sticky lg:top-20"
+                :fields="aiFields"
+                @apply-summary="applySummary"
+                @apply-priority="applyPriority"
+            />
+        </aside>
+    </div>
 </template>

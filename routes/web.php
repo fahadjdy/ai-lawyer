@@ -3,13 +3,18 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\Cases\CaseAiController;
 use App\Http\Controllers\Cases\CaseController;
+use App\Http\Controllers\Cases\CaseEventController;
+use App\Http\Controllers\Cases\SuggestSectionsController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\HearingController;
+use App\Http\Controllers\LegalNotebookController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TeamController;
@@ -30,6 +35,17 @@ Route::middleware(['auth'])->group(function (): void {
     Route::get('search', SearchController::class)->name('search');
 
     // Cases — full resourceful CRUD (the reference module).
+    // AI Case Assistant: structure a draft + suggest IPC sections (rate-limited).
+    Route::post('cases/ai/analyze', CaseAiController::class)->middleware('throttle:20,1')->name('cases.ai');
+
+    // AI: suggest sections for a tracking update from its title (case-aware).
+    Route::post('cases/{case}/suggest-sections', SuggestSectionsController::class)->middleware('throttle:30,1')->name('cases.suggest-sections');
+
+    // Case Tracking timeline — stage updates with evolving sections.
+    Route::post('cases/{case}/events', [CaseEventController::class, 'store'])->name('cases.events.store');
+    Route::put('cases/{case}/events/{event}', [CaseEventController::class, 'update'])->name('cases.events.update');
+    Route::delete('cases/{case}/events/{event}', [CaseEventController::class, 'destroy'])->name('cases.events.destroy');
+
     Route::resource('cases', CaseController::class)->parameters(['cases' => 'case']);
 
     // Clients — full CRUD (create/edit live on dedicated pages).
@@ -59,9 +75,22 @@ Route::middleware(['auth'])->group(function (): void {
     Route::get('documents', [DocumentController::class, 'index'])->name('documents.index');
     Route::get('evidence', [EvidenceController::class, 'index'])->name('evidence.index');
 
-    // Firm administration
+    // Firm administration — team members (add / edit / remove).
     Route::get('team', [TeamController::class, 'index'])->name('team.index');
+    Route::post('team', [TeamController::class, 'store'])->name('team.store');
+    Route::put('team/{user}', [TeamController::class, 'update'])->name('team.update');
+    Route::delete('team/{user}', [TeamController::class, 'destroy'])->name('team.destroy');
+
+    // Roles & rights — manage which abilities each role grants (admins only).
+    Route::middleware('can:settings.manage')->group(function (): void {
+        Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
+        Route::put('roles/{role}', [RoleController::class, 'update'])->name('roles.update');
+    });
+
     Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
+
+    // Legal Notebook — read-only quick reference of Indian statutes & sections.
+    Route::get('legal-notebook', [LegalNotebookController::class, 'index'])->name('legal-notebook.index');
 
     // Legal Library — printable, editable & customizable document templates.
     Route::get('templates', [TemplateController::class, 'index'])->name('templates.index');

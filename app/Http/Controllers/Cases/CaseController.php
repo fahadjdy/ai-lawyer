@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Cases;
 
 use App\DTOs\CaseData;
 use App\Enums\CasePriority;
+use App\Enums\CaseStage;
 use App\Enums\CaseStatus;
 use App\Enums\CaseType;
 use App\Http\Controllers\Controller;
@@ -70,6 +71,7 @@ class CaseController extends Controller
 
         return Inertia::render('cases/Show', [
             'case' => new CaseResource($this->cases->find($case->uuid)),
+            'stages' => CaseStage::options(),
         ]);
     }
 

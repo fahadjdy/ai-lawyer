@@ -53,6 +53,19 @@ it('creates a task on the board', function () {
     ]);
 });
 
+it('places a newly created task at the top of its column', function () {
+    $user = bootOwnerForMatters();
+    $existing = Task::factory()->create(['team_id' => $user->team_id, 'status' => 'todo', 'position' => 0]);
+
+    $this->post('/tasks', ['title' => 'Newest task', 'status' => 'todo', 'priority' => 'medium'])->assertRedirect();
+
+    $new = Task::where('title', 'Newest task')->first();
+
+    // New task takes the top slot; the previous task is pushed down.
+    expect($new->position)->toBe(0)
+        ->and($existing->fresh()->position)->toBe(1);
+});
+
 it('requires a title when creating a task', function () {
     bootOwnerForMatters();
 

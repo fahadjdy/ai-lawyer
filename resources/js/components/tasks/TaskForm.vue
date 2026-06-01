@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -136,20 +137,26 @@ const inputClass =
 
                 <div>
                     <Label for="t_case">Case <span class="text-slate-400">(optional)</span></Label>
-                    <select id="t_case" v-model="caseId" :class="inputClass">
-                        <option :value="null">— General (no case) —</option>
-                        <option v-for="c in options.cases" :key="c.id" :value="c.id">{{ c.name }}</option>
-                    </select>
+                    <SearchableSelect
+                        id="t_case"
+                        v-model="caseId"
+                        :options="options.cases.map((c) => ({ value: c.id, label: c.name }))"
+                        placeholder="— General (no case) —"
+                        clearable
+                    />
                     <InputError :message="errors.case_id" />
                 </div>
 
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                         <Label for="t_assignee">Assignee</Label>
-                        <select id="t_assignee" v-model="assignedTo" :class="inputClass">
-                            <option :value="null">— Unassigned —</option>
-                            <option v-for="u in options.users" :key="u.id" :value="u.id">{{ u.name }}</option>
-                        </select>
+                        <SearchableSelect
+                            id="t_assignee"
+                            v-model="assignedTo"
+                            :options="options.users.map((u) => ({ value: u.id, label: u.name }))"
+                            placeholder="— Unassigned —"
+                            clearable
+                        />
                         <InputError :message="errors.assigned_to" />
                     </div>
                     <div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -108,10 +109,12 @@ const inputClass =
             <form class="space-y-4" @submit.prevent="submit">
                 <div>
                     <Label for="h_case">Case</Label>
-                    <select id="h_case" v-model="caseId" :class="inputClass">
-                        <option :value="null">— Select a case —</option>
-                        <option v-for="c in options.cases" :key="c.id" :value="c.id">{{ c.name }}</option>
-                    </select>
+                    <SearchableSelect
+                        id="h_case"
+                        v-model="caseId"
+                        :options="options.cases.map((c) => ({ value: c.id, label: c.name }))"
+                        placeholder="— Select a case —"
+                    />
                     <InputError :message="errors.case_id" />
                 </div>
 

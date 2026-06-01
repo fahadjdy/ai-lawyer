@@ -27,7 +27,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 <template>
     <Head title="Edit Case" />
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
+        <div class="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
             <PageHeader title="Edit case" description="Update matter details." />
             <CaseForm :options="options" :initial="case" :submit-url="`/cases/${caseUuid}`" method="put" submit-label="Save changes" />
         </div>

@@ -63,6 +63,9 @@ class CaseRepository extends BaseRepository
                 'documents' => fn ($q) => $q->latestVersions()->latest(),
                 'evidence',
                 'notes.author:id,uuid,name',
+                'events' => fn ($q) => $q->with('creator:id,uuid,name')
+                    ->orderByRaw('COALESCE(occurred_on, DATE(created_at)) DESC')
+                    ->orderByDesc('id'),
             ])
             ->where('uuid', $uuid)
             ->firstOrFail();
