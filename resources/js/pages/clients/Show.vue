@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 import PageHeader from '@/components/common/PageHeader.vue';
 import StatusBadge from '@/components/common/StatusBadge.vue';
 import EmptyState from '@/components/common/EmptyState.vue';
+import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem, EnumOption } from '@/types';
-import { Head, Link } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { Pencil, Trash2 } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 
 interface ClientData {
     id: string;
@@ -24,11 +27,16 @@ interface ClientData {
     cases: { id: string; case_number: string; title: string; status: { label: string; color: string } }[];
 }
 
-const props = defineProps<{ client: ClientData }>();
+const props = defineProps<{ client: ClientData; can: { update: boolean; delete: boolean } }>();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: 'Clients', href: '/clients' },
     { title: props.client.name, href: `/clients/${props.client.id}` },
 ]);
+
+const confirmOpen = ref(false);
+function confirmDelete() {
+    router.delete(`/clients/${props.client.id}`, { onFinish: () => (confirmOpen.value = false) });
+}
 </script>
 
 <template>
@@ -36,7 +44,15 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="space-y-6 p-4 sm:p-6">
             <PageHeader :title="client.name" :description="client.company ?? ''">
-                <template #actions><StatusBadge :label="client.type.label" :color="client.type.color" /></template>
+                <template #actions>
+                    <StatusBadge :label="client.type.label" :color="client.type.color" />
+                    <Button v-if="can.update" variant="outline" as-child>
+                        <Link :href="`/clients/${client.id}/edit`"><Pencil class="size-4" /> Edit</Link>
+                    </Button>
+                    <Button v-if="can.delete" variant="outline" class="text-rose-600 hover:text-rose-700" @click="confirmOpen = true">
+                        <Trash2 class="size-4" /> Delete
+                    </Button>
+                </template>
             </PageHeader>
 
             <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -73,5 +89,13 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                 </div>
             </div>
         </div>
+
+        <ConfirmDialog
+            v-model:open="confirmOpen"
+            title="Delete client?"
+            :description="`“${client.name}” and their link to cases will be removed.`"
+            confirm-label="Delete client"
+            @confirm="confirmDelete"
+        />
     </AppLayout>
 </template>

@@ -20,6 +20,8 @@ class HearingResource extends JsonResource
     {
         return [
             'id' => $this->uuid,
+            // Raw FK — used only to pre-fill the edit form's case <select>.
+            'case_id' => $this->case_id,
             'scheduled_at' => $this->scheduled_at?->toIso8601String(),
             'status' => $this->status ? ['value' => $this->status->value, 'label' => $this->status->label(), 'color' => $this->status->color()] : null,
             'purpose' => $this->purpose,

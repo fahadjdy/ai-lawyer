@@ -24,6 +24,9 @@ class TaskResource extends JsonResource
             'description' => $this->description,
             'status' => $this->status ? ['value' => $this->status->value, 'label' => $this->status->label(), 'color' => $this->status->color()] : null,
             'priority' => $this->priority ? ['value' => $this->priority->value, 'label' => $this->priority->label(), 'color' => $this->priority->color()] : null,
+            // Raw FK ids — used only to pre-fill the edit form's <select>s.
+            'case_id' => $this->case_id,
+            'assigned_to' => $this->assigned_to,
             'due_at' => $this->due_at?->toIso8601String(),
             'completed_at' => $this->completed_at?->toIso8601String(),
             'is_overdue' => $this->isOverdue(),

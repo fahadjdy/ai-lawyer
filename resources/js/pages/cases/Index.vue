@@ -44,7 +44,7 @@ const { filters } = useFilters('cases.index', {
 
 const columns: Column[] = [
     { key: 'case_number', label: 'Case #' },
-    { key: 'title', label: 'Title' },
+    { key: 'title', label: 'Title', primary: true },
     { key: 'client', label: 'Client' },
     { key: 'status', label: 'Status' },
     { key: 'priority', label: 'Priority' },
