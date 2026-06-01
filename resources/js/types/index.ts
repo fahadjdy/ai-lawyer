@@ -27,6 +27,19 @@ export interface EnumOption {
     color: string;
 }
 
+/** A single hit returned by the global command-palette search endpoint. */
+export interface SearchResult {
+    id: string;
+    group: 'Cases' | 'Clients' | 'Hearings' | 'Tasks';
+    type: 'case' | 'client' | 'hearing' | 'task';
+    icon: 'briefcase' | 'user' | 'calendar' | 'check';
+    title: string;
+    subtitle: string;
+    badge: string | null;
+    color: string | null;
+    url: string;
+}
+
 export interface AuthUser {
     id: string;
     name: string;
