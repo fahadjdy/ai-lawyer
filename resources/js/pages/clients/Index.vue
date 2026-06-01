@@ -1,14 +1,23 @@
 <script setup lang="ts">
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 import DataTable, { type Column } from '@/components/common/DataTable.vue';
 import PageHeader from '@/components/common/PageHeader.vue';
 import Pagination from '@/components/common/Pagination.vue';
 import StatusBadge from '@/components/common/StatusBadge.vue';
+import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { useFilters } from '@/composables/useFilters';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem, EnumOption, Paginated } from '@/types';
-import { Head, router } from '@inertiajs/vue3';
-import { Search } from 'lucide-vue-next';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { MoreHorizontal, Plus, Search } from 'lucide-vue-next';
+import { ref } from 'vue';
 
 interface ClientRow {
     id: string;
@@ -25,28 +34,52 @@ const props = defineProps<{
     clients: Paginated<ClientRow>;
     filters: { search?: string; type?: string };
     options: { types: EnumOption[] };
+    can: { create: boolean };
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Clients', href: '/clients' }];
 const { filters } = useFilters('clients.index', { search: props.filters.search ?? '', type: props.filters.type ?? '' });
 
 const columns: Column[] = [
-    { key: 'name', label: 'Name' },
+    { key: 'name', label: 'Name', primary: true },
     { key: 'type', label: 'Type' },
     { key: 'email', label: 'Email' },
     { key: 'phone', label: 'Phone' },
     { key: 'cases_count', label: 'Cases', align: 'center' },
     { key: 'city', label: 'City' },
+    { key: 'actions', label: '', align: 'right', hideLabelOnMobile: true },
 ];
 
 const open = (row: ClientRow) => router.visit(`/clients/${row.id}`);
+
+// Delete flow
+const confirmOpen = ref(false);
+const deleting = ref<ClientRow | null>(null);
+function askDelete(row: ClientRow) {
+    deleting.value = row;
+    confirmOpen.value = true;
+}
+function confirmDelete() {
+    if (!deleting.value) return;
+    router.delete(`/clients/${deleting.value.id}`, {
+        preserveScroll: true,
+        onFinish: () => {
+            confirmOpen.value = false;
+            deleting.value = null;
+        },
+    });
+}
 </script>
 
 <template>
     <Head title="Clients" />
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="space-y-5 p-4 sm:p-6">
-            <PageHeader title="Clients" description="People and organizations your firm represents." />
+            <PageHeader title="Clients" description="People and organizations your firm represents.">
+                <template v-if="can.create" #actions>
+                    <Button as-child><Link href="/clients/create"><Plus class="size-4" /> New client</Link></Button>
+                </template>
+            </PageHeader>
 
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div class="relative flex-1">
@@ -70,6 +103,22 @@ const open = (row: ClientRow) => router.visit(`/clients/${row.id}`);
                 <template #cell-cases_count="{ row }">
                     <span class="inline-flex min-w-6 items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-medium text-slate-600">{{ row.cases_count }}</span>
                 </template>
+                <template #cell-actions="{ row }">
+                    <div class="flex justify-end" @click.stop>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger as-child>
+                                <button class="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="Client actions">
+                                    <MoreHorizontal class="size-4" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" class="w-36">
+                                <DropdownMenuItem @select="router.visit(`/clients/${row.id}`)">View</DropdownMenuItem>
+                                <DropdownMenuItem @select="router.visit(`/clients/${row.id}/edit`)">Edit</DropdownMenuItem>
+                                <DropdownMenuItem class="text-rose-600 focus:text-rose-700" @select="askDelete(row)">Delete</DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                </template>
             </DataTable>
 
             <div class="flex items-center justify-between">
@@ -77,5 +126,13 @@ const open = (row: ClientRow) => router.visit(`/clients/${row.id}`);
                 <Pagination :links="clients.links" />
             </div>
         </div>
+
+        <ConfirmDialog
+            v-model:open="confirmOpen"
+            title="Delete client?"
+            :description="`“${deleting?.name ?? ''}” and their link to cases will be removed.`"
+            confirm-label="Delete client"
+            @confirm="confirmDelete"
+        />
     </AppLayout>
 </template>

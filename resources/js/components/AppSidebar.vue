@@ -94,7 +94,16 @@ const isActive = (href: string) => page.url.startsWith(href);
                 <SidebarGroupLabel>{{ group.label }}</SidebarGroupLabel>
                 <SidebarMenu>
                     <SidebarMenuItem v-for="item in group.items" :key="item.href">
-                        <SidebarMenuButton as-child :is-active="isActive(item.href)" :tooltip="item.title">
+                        <SidebarMenuButton
+                            as-child
+                            :is-active="isActive(item.href)"
+                            :tooltip="item.title"
+                            :class="
+                                isActive(item.href)
+                                    ? 'bg-indigo-50 font-medium text-indigo-700 hover:bg-indigo-50 hover:text-indigo-700 active:bg-indigo-50 active:text-indigo-700 [&>svg]:text-indigo-600'
+                                    : 'text-slate-600'
+                            "
+                        >
                             <Link :href="item.href">
                                 <component :is="item.icon" />
                                 <span>{{ item.title }}</span>

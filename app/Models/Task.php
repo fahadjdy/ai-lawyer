@@ -12,11 +12,15 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\Activitylog\Models\Activity;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Task extends Model
 {
-    use BelongsToTeam, HasFactory, HasUuid, SoftDeletes;
+    use BelongsToTeam, HasFactory, HasUuid, LogsActivity, SoftDeletes;
 
     protected $fillable = [
         'uuid',
@@ -58,6 +62,16 @@ class Task extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /**
+     * The audit trail recorded against this task by spatie/activitylog. The
+     * LogsActivity trait records entries but doesn't expose the inverse
+     * relation, so we declare it for the task detail timeline.
+     */
+    public function activities(): MorphMany
+    {
+        return $this->morphMany(Activity::class, 'subject');
+    }
+
     public function scopeStatus(Builder $query, ?string $status): Builder
     {
         return $status ? $query->where('status', $status) : $query;
@@ -75,5 +89,19 @@ class Task extends Model
         return $this->due_at !== null
             && $this->due_at->isPast()
             && $this->status !== TaskStatus::Done;
+    }
+
+    /**
+     * Audit trail: log the meaningful fields so the task detail page can show
+     * who moved it to which state, reassigned it, or changed its schedule.
+     * `position` is intentionally excluded so drag-reordering doesn't spam it.
+     */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['title', 'status', 'priority', 'assigned_to', 'case_id', 'due_at'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->useLogName('task');
     }
 }
