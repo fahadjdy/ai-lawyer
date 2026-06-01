@@ -46,6 +46,7 @@ class TaskController extends Controller
         return Inertia::render('tasks/Index', [
             'columns' => $columns,
             'options' => $this->formOptions(),
+            'meId' => auth()->id(),
         ]);
     }
 
@@ -106,10 +107,14 @@ class TaskController extends Controller
         $data = $request->validated();
         $teamId = $request->user()->team_id;
 
-        // Append to the end of its target column for a predictable board order.
-        $data['position'] = (int) Task::where('team_id', $teamId)
+        // New tasks surface at the TOP of their column: push the column down by
+        // one and insert the newcomer at position 0. (Bulk increment fires no
+        // model events, so it won't spam the activity log.)
+        Task::where('team_id', $teamId)
             ->where('status', $data['status'])
-            ->max('position') + 1;
+            ->increment('position');
+
+        $data['position'] = 0;
         $data['created_by'] = $request->user()->id;
         $data['completed_at'] = $data['status'] === TaskStatus::Done->value ? now() : null;
 

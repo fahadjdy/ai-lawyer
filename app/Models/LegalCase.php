@@ -129,6 +129,11 @@ class LegalCase extends Model
         return $this->hasMany(CaseNote::class, 'case_id')->latest();
     }
 
+    public function events(): HasMany
+    {
+        return $this->hasMany(CaseEvent::class, 'case_id');
+    }
+
     /* -----------------------------------------------------------------
      |  Query scopes
      | -----------------------------------------------------------------

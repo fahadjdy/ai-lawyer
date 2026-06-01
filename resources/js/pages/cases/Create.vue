@@ -24,7 +24,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 <template>
     <Head title="New Case" />
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
+        <div class="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
             <PageHeader title="New case" description="Create a new matter for your firm." />
             <CaseForm :options="options" submit-url="/cases" method="post" submit-label="Create case" />
         </div>

@@ -15,11 +15,13 @@ import { usePermissions } from '@/composables/usePermissions';
 import type { NavGroup } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
 import {
+    BookOpen,
     Briefcase,
     CalendarDays,
     FileText,
     FolderOpen,
     Gavel,
+    KeyRound,
     LayoutGrid,
     ListChecks,
     ScrollText,
@@ -55,12 +57,14 @@ const groups: NavGroup[] = [
             { title: 'Documents', href: '/documents', icon: FolderOpen, permission: 'documents.view' },
             { title: 'Evidence', href: '/evidence', icon: Gavel, permission: 'evidence.view' },
             { title: 'Legal Library', href: '/templates', icon: ScrollText, permission: 'templates.view' },
+            { title: 'Legal Notebook', href: '/legal-notebook', icon: BookOpen },
         ],
     },
     {
         label: 'Firm',
         items: [
             { title: 'Team', href: '/team', icon: UsersRound, permission: 'team.manage' },
+            { title: 'Roles & Rights', href: '/roles', icon: KeyRound, permission: 'settings.manage' },
             { title: 'Activity Log', href: '/activity', icon: ShieldCheck, permission: 'audit.view' },
         ],
     },
