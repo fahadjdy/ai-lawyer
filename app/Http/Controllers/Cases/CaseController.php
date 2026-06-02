@@ -89,6 +89,7 @@ class CaseController extends Controller
                 'case_type' => $case->case_type->value,
                 'status' => $case->status->value,
                 'priority' => $case->priority->value,
+                'favorability' => $case->favorability,
                 'description' => $case->description,
                 'court_name' => $case->court_name,
                 'court_type' => $case->court_type,

@@ -30,6 +30,7 @@ final readonly class CaseData implements DataTransferObject
         public CaseType|Optional $caseType,
         public CaseStatus|Optional $status,
         public CasePriority|Optional $priority,
+        public ?int $favorability,
         public ?string $caseNumber,
         public ?string $description,
         public ?string $courtName,
@@ -55,6 +56,9 @@ final readonly class CaseData implements DataTransferObject
             caseType: $request->filled('case_type') ? CaseType::from($request->string('case_type')->value()) : $opt,
             status: $request->filled('status') ? CaseStatus::from($request->string('status')->value()) : $opt,
             priority: $request->filled('priority') ? CasePriority::from($request->string('priority')->value()) : $opt,
+            // `filled` keeps a deliberate 0 (0% in favour) while treating an
+            // absent/empty value as "not assessed" (null).
+            favorability: $request->filled('favorability') ? $request->integer('favorability') : null,
             caseNumber: $request->input('case_number'),
             description: $request->input('description'),
             courtName: $request->input('court_name'),
@@ -82,6 +86,7 @@ final readonly class CaseData implements DataTransferObject
             'case_type' => $this->caseType instanceof CaseType ? $this->caseType->value : $this->caseType,
             'status' => $this->status instanceof CaseStatus ? $this->status->value : $this->status,
             'priority' => $this->priority instanceof CasePriority ? $this->priority->value : $this->priority,
+            'favorability' => $this->favorability,
             'case_number' => $this->caseNumber,
             'description' => $this->description,
             'court_name' => $this->courtName,

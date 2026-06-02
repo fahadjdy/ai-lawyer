@@ -27,6 +27,7 @@ class CaseListResource extends JsonResource
             'type' => $this->case_type?->label(),
             'status' => ['value' => $this->status->value, 'label' => $this->status->label(), 'color' => $this->status->color()],
             'priority' => ['value' => $this->priority->value, 'label' => $this->priority->label(), 'color' => $this->priority->color()],
+            'favorability' => $this->favorability,
             'client' => $this->whenLoaded('client', fn () => $this->client ? [
                 'id' => $this->client->uuid,
                 'name' => $this->client->name,

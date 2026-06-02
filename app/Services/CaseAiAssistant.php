@@ -62,6 +62,22 @@ class CaseAiAssistant
     }
 
     /**
+     * Anticipate the cross-examination: the questions the opposing counsel and
+     * the judge/bench are each likely to put, paired with a short preparation
+     * strategy. Case-aware — it considers the tracking history when present.
+     * Powers the "Cross-examination prep" panel on the case detail page.
+     *
+     * @param  array<string, mixed>  $case
+     * @return array<string, mixed>
+     */
+    public function crossExamQuestions(array $case): array
+    {
+        $parsed = $this->chat($this->crossExamSystemPrompt(), $this->crossExamUserPrompt($case), 0.5, 1800);
+
+        return $this->normalizeCrossExam($parsed);
+    }
+
+    /**
      * Single chat-completion call returning the decoded JSON object content.
      *
      * @return array<string, mixed>
@@ -174,6 +190,87 @@ class CaseAiAssistant
         PROMPT;
     }
 
+    private function crossExamSystemPrompt(): string
+    {
+        return <<<'PROMPT'
+        You are a seasoned Indian trial advocate preparing a lawyer for the hearing of
+        the case described. Anticipate the cross-examination — the pointed questions the
+        matter is likely to face — from TWO angles:
+
+        1. "opponent": questions the OPPOSING COUNSEL would put to your client/witnesses
+           to attack credibility, expose contradictions, highlight delay, question motive,
+           and probe gaps or weaknesses in the evidence.
+        2. "judge": questions the JUDGE / BENCH is likely to ask to clarify the facts,
+           test the legal basis and maintainability, and weigh the sections invoked.
+
+        For EACH question also provide:
+        - "category": one or two words (e.g. Credibility, Timeline/Delay, Documentary,
+          Motive, Legal basis, Jurisdiction, Evidence, Procedure).
+        - "strategy": a one or two line preparation note — how to answer it or what to
+          keep ready — practical and specific to these facts.
+
+        Be decisive and specific, grounded ONLY in the facts and tracking history given —
+        do not invent facts. Give roughly 4 to 7 questions per side.
+
+        Respond with STRICT, valid JSON only — no markdown, no prose outside JSON — using
+        exactly this shape:
+        {
+          "opponent": [
+            { "question": "string", "category": "string", "strategy": "string" }
+          ],
+          "judge": [
+            { "question": "string", "category": "string", "strategy": "string" }
+          ],
+          "disclaimer": "string"
+        }
+
+        The disclaimer must state these are AI-anticipated questions for a lawyer's
+        preparation and review only — not a prediction of the actual proceedings, and not
+        legal advice.
+        PROMPT;
+    }
+
+    /**
+     * Facts + tracking history framed for cross-examination anticipation. Kept
+     * separate from {@see userPrompt()} so its trailing instruction stays on
+     * topic (questions, not section mapping).
+     *
+     * @param  array<string, mixed>  $case
+     */
+    private function crossExamUserPrompt(array $case): string
+    {
+        $lines = [
+            'Title: '.($case['title'] ?? '—'),
+            'Case type: '.($case['case_type'] ?? '—'),
+            'Court: '.($case['court_name'] ?? '—'),
+            'Opposing party: '.($case['opposing_party'] ?? '—'),
+            '',
+            'Facts / description:',
+            (string) ($case['description'] ?? ''),
+        ];
+
+        $history = $case['history'] ?? [];
+        if (is_array($history) && $history !== []) {
+            $lines[] = '';
+            $lines[] = 'Case tracking history (oldest first):';
+            foreach ($history as $h) {
+                if (! is_array($h)) {
+                    continue;
+                }
+                $secs = implode(', ', (array) ($h['sections'] ?? []));
+                $note = trim((string) ($h['notes'] ?? ''));
+                $lines[] = '- ['.($h['stage'] ?? 'Update').'] '.($h['title'] ?? '')
+                    .($secs !== '' ? ' | sections: '.$secs : '')
+                    .($note !== '' ? ' | note: '.$note : '');
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = 'Anticipate the cross-examination from both the opposing counsel and the judge.';
+
+        return implode("\n", $lines);
+    }
+
     /**
      * @param  array<string, mixed>  $case
      */
@@ -244,5 +341,60 @@ class CaseAiAssistant
             'suggested_priority' => in_array($priority, ['low', 'medium', 'high', 'urgent'], true) ? $priority : null,
             'disclaimer' => trim((string) data_get($parsed, 'disclaimer', 'AI-generated suggestions for a lawyer’s review — not legal advice.')),
         ];
+    }
+
+    /**
+     * Coerce the cross-exam model output into a predictable, safe shape: two
+     * lists of {question, category, strategy} plus a disclaimer.
+     *
+     * @param  array<string, mixed>  $parsed
+     * @return array<string, mixed>
+     */
+    private function normalizeCrossExam(array $parsed): array
+    {
+        return [
+            'opponent' => $this->cleanQuestions(data_get($parsed, 'opponent', [])),
+            'judge' => $this->cleanQuestions(data_get($parsed, 'judge', [])),
+            'disclaimer' => trim((string) data_get(
+                $parsed,
+                'disclaimer',
+                'AI-anticipated questions for a lawyer’s preparation — not legal advice or a prediction of the proceedings.',
+            )),
+        ];
+    }
+
+    /**
+     * Normalise one side's question list, dropping anything without a question
+     * and tolerating bare-string items.
+     *
+     * @param  mixed  $items
+     * @return array<int, array{question: string, category: string, strategy: string}>
+     */
+    private function cleanQuestions($items): array
+    {
+        $out = [];
+        foreach ((array) $items as $q) {
+            if (! is_array($q)) {
+                $text = trim((string) $q);
+                if ($text !== '') {
+                    $out[] = ['question' => $text, 'category' => '', 'strategy' => ''];
+                }
+
+                continue;
+            }
+
+            $question = trim((string) ($q['question'] ?? ''));
+            if ($question === '') {
+                continue;
+            }
+
+            $out[] = [
+                'question' => $question,
+                'category' => trim((string) ($q['category'] ?? '')),
+                'strategy' => trim((string) ($q['strategy'] ?? '')),
+            ];
+        }
+
+        return $out;
     }
 }

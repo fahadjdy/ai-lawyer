@@ -30,6 +30,8 @@ class LegalCaseFactory extends Factory
             'case_type' => fake()->randomElement(CaseType::cases()),
             'status' => fake()->randomElement(CaseStatus::cases()),
             'priority' => fake()->randomElement(CasePriority::cases()),
+            // Most matters carry a favourability read; some are left unassessed.
+            'favorability' => fake()->optional(0.8)->numberBetween(15, 92),
             'court_name' => fake()->randomElement($courts),
             'court_type' => fake()->randomElement(['High Court', 'District Court', 'Tribunal', 'Supreme Court']),
             'jurisdiction' => fake()->city(),

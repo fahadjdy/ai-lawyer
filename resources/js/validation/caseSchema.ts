@@ -12,6 +12,7 @@ export const caseSchema = z.object({
     case_type: z.string().min(1, 'Select a case type'),
     status: z.string().min(1, 'Select a status'),
     priority: z.string().min(1, 'Select a priority'),
+    favorability: z.coerce.number().int().min(0).max(100).nullable().optional(),
     description: z.string().max(10000).optional().or(z.literal('')),
     court_name: z.string().max(255).optional().or(z.literal('')),
     court_type: z.string().max(120).optional().or(z.literal('')),

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Cases\CaseAiController;
+use App\Http\Controllers\Cases\CaseAnalyzeController;
 use App\Http\Controllers\Cases\CaseController;
+use App\Http\Controllers\Cases\CaseCrossExamController;
 use App\Http\Controllers\Cases\CaseEventController;
 use App\Http\Controllers\Cases\SuggestSectionsController;
 use App\Http\Controllers\ClientController;
@@ -35,11 +37,17 @@ Route::middleware(['auth'])->group(function (): void {
     Route::get('search', SearchController::class)->name('search');
 
     // Cases — full resourceful CRUD (the reference module).
-    // AI Case Assistant: structure a draft + suggest IPC sections (rate-limited).
+    // AI Case Assistant: structure a draft + suggest IPC sections while authoring (rate-limited).
     Route::post('cases/ai/analyze', CaseAiController::class)->middleware('throttle:20,1')->name('cases.ai');
+
+    // AI: analyze a SAVED case and cache the summary + IPC sections on it.
+    Route::post('cases/{case}/analyze', CaseAnalyzeController::class)->middleware('throttle:20,1')->name('cases.analyze');
 
     // AI: suggest sections for a tracking update from its title (case-aware).
     Route::post('cases/{case}/suggest-sections', SuggestSectionsController::class)->middleware('throttle:30,1')->name('cases.suggest-sections');
+
+    // AI: anticipate cross-examination questions (opponent + judge) for a case (cached).
+    Route::post('cases/{case}/cross-questions', CaseCrossExamController::class)->middleware('throttle:20,1')->name('cases.cross-questions');
 
     // Case Tracking timeline — stage updates with evolving sections.
     Route::post('cases/{case}/events', [CaseEventController::class, 'store'])->name('cases.events.store');
