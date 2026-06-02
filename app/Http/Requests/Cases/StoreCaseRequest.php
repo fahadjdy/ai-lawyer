@@ -35,6 +35,7 @@ class StoreCaseRequest extends FormRequest
             'case_type' => ['required', Rule::enum(CaseType::class)],
             'status' => ['required', Rule::enum(CaseStatus::class)],
             'priority' => ['required', Rule::enum(CasePriority::class)],
+            'favorability' => ['nullable', 'integer', 'between:0,100'],
             'description' => ['nullable', 'string', 'max:10000'],
             'court_name' => ['nullable', 'string', 'max:255'],
             'court_type' => ['nullable', 'string', 'max:120'],

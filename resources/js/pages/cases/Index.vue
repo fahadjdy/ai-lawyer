@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import DataTable, { type Column } from '@/components/common/DataTable.vue';
+import FavorabilityCircle from '@/components/cases/FavorabilityCircle.vue';
 import PageHeader from '@/components/common/PageHeader.vue';
 import Pagination from '@/components/common/Pagination.vue';
 import StatusBadge from '@/components/common/StatusBadge.vue';
@@ -20,6 +21,7 @@ interface CaseRow {
     type: string;
     status: EnumOption;
     priority: EnumOption;
+    favorability: number | null;
     client?: { id: string; name: string } | null;
     lead_lawyer?: { name: string; initials: string } | null;
     court_name: string | null;
@@ -48,6 +50,7 @@ const columns: Column[] = [
     { key: 'client', label: 'Client' },
     { key: 'status', label: 'Status' },
     { key: 'priority', label: 'Priority' },
+    { key: 'favorability', label: 'In Favour' },
     { key: 'next_hearing_at', label: 'Next Hearing' },
     { key: 'lead_lawyer', label: 'Lead' },
 ];
@@ -101,6 +104,9 @@ const open = (row: CaseRow) => router.visit(`/cases/${row.id}`);
                 <template #cell-client="{ row }">{{ row.client?.name ?? '—' }}</template>
                 <template #cell-status="{ row }"><StatusBadge :label="row.status.label" :color="row.status.color" /></template>
                 <template #cell-priority="{ row }"><StatusBadge :label="row.priority.label" :color="row.priority.color" /></template>
+                <template #cell-favorability="{ row }">
+                    <div class="flex justify-center"><FavorabilityCircle :value="row.favorability" /></div>
+                </template>
                 <template #cell-next_hearing_at="{ row }">{{ formatDate(row.next_hearing_at) }}</template>
                 <template #cell-lead_lawyer="{ row }">
                     <span v-if="row.lead_lawyer" class="inline-flex items-center gap-2">

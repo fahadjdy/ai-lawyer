@@ -52,6 +52,7 @@ class LegalCase extends Model
         'case_type',
         'status',
         'priority',
+        'favorability',
         'court_name',
         'court_type',
         'jurisdiction',
@@ -71,6 +72,7 @@ class LegalCase extends Model
             'case_type' => CaseType::class,
             'status' => CaseStatus::class,
             'priority' => CasePriority::class,
+            'favorability' => 'integer',
             'filing_date' => 'date',
             'next_hearing_at' => 'datetime',
             'tags' => 'array',
@@ -134,6 +136,39 @@ class LegalCase extends Model
         return $this->hasMany(CaseEvent::class, 'case_id');
     }
 
+    public function aiInsights(): HasMany
+    {
+        return $this->hasMany(CaseAiInsight::class, 'case_id');
+    }
+
+    /* -----------------------------------------------------------------
+     |  Domain helpers
+     | -----------------------------------------------------------------
+     */
+
+    /**
+     * The tracking timeline as a plain, oldest-first array — the shape the AI
+     * assistants and the insight signature both consume. Uses the already-loaded
+     * `events` relation when present to avoid an extra query.
+     *
+     * @return array<int, array{stage: ?string, title: ?string, sections: array<int, string>, notes: string}>
+     */
+    public function trackingHistory(): array
+    {
+        $events = $this->relationLoaded('events') ? $this->events : $this->events()->get();
+
+        return $events
+            ->sortBy('id')
+            ->map(fn (CaseEvent $e): array => [
+                'stage' => $e->stage?->label(),
+                'title' => $e->title,
+                'sections' => $e->sections ?? [],
+                'notes' => $e->description ?? '',
+            ])
+            ->values()
+            ->all();
+    }
+
     /* -----------------------------------------------------------------
      |  Query scopes
      | -----------------------------------------------------------------
@@ -189,7 +224,7 @@ class LegalCase extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['title', 'case_number', 'status', 'priority', 'client_id', 'lead_lawyer_id', 'next_hearing_at'])
+            ->logOnly(['title', 'case_number', 'status', 'priority', 'favorability', 'client_id', 'lead_lawyer_id', 'next_hearing_at'])
             ->logOnlyDirty()
             ->dontLogEmptyChanges()
             ->useLogName('case');

@@ -7,11 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { caseSchema, type CaseFormValues } from '@/validation/caseSchema';
 import { useToastStore } from '@/stores/toasts';
+import { gradient } from '@/lib/chartColors';
+import { FAV_TEXT, favorabilityLabel, favorabilityToken } from '@/lib/favorability';
+import { cn } from '@/lib/utils';
 import { toTypedSchema } from '@vee-validate/zod';
 import { router } from '@inertiajs/vue3';
 import { Link } from '@inertiajs/vue3';
 import { useForm } from 'vee-validate';
-import { computed, ref } from 'vue';
+import { computed, ref, watchEffect } from 'vue';
 import type { EnumOption } from '@/types';
 
 const props = defineProps<{
@@ -40,6 +43,7 @@ const { defineField, handleSubmit, errors, setErrors } = useForm<CaseFormValues>
         case_type: 'civil',
         status: 'intake',
         priority: 'medium',
+        favorability: null,
         description: '',
         court_name: '',
         court_type: '',
@@ -61,7 +65,21 @@ const [clientId] = defineField('client_id');
 const [caseType] = defineField('case_type');
 const [status] = defineField('status');
 const [priority] = defineField('priority');
+const [favorability] = defineField('favorability');
 const [description] = defineField('description');
+
+// Favourability is an optional 0–100 assessment. A local slider + "assessed"
+// toggle drive the actual (nullable) form value so an un-assessed case stays
+// null rather than defaulting to a misleading number.
+const favAssessed = ref(props.initial?.favorability !== null && props.initial?.favorability !== undefined);
+const favSlider = ref(typeof props.initial?.favorability === 'number' ? props.initial.favorability : 50);
+watchEffect(() => {
+    favorability.value = favAssessed.value ? favSlider.value : null;
+});
+const favToken = computed(() => favorabilityToken(favSlider.value));
+const favGrad = computed(() => gradient(favToken.value));
+const favTextClass = computed(() => FAV_TEXT[favToken.value]);
+const favLabelText = computed(() => favorabilityLabel(favSlider.value));
 const [courtName] = defineField('court_name');
 const [courtType] = defineField('court_type');
 const [jurisdiction] = defineField('jurisdiction');
@@ -156,6 +174,43 @@ const inputClass = 'h-9 w-full rounded-md border border-slate-200 bg-white px-3 
                         <InputError :message="errors.priority" />
                     </div>
                 </div>
+
+                <!-- Favourability: how strongly the case is in our favour -->
+                <div class="md:col-span-2">
+                    <div class="flex items-center justify-between">
+                        <Label for="favorability">
+                            Favourability <span class="font-normal text-slate-400">— how much the case is in your favour</span>
+                        </Label>
+                        <button
+                            type="button"
+                            class="text-xs font-medium text-slate-500 transition hover:text-slate-700"
+                            @click="favAssessed = !favAssessed"
+                        >
+                            {{ favAssessed ? 'Mark not assessed' : 'Assess now' }}
+                        </button>
+                    </div>
+                    <div v-if="favAssessed" class="mt-2">
+                        <div class="flex items-center gap-4">
+                            <input
+                                id="favorability"
+                                v-model.number="favSlider"
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                class="h-2 flex-1 cursor-pointer accent-indigo-600"
+                            />
+                            <span :class="cn('w-12 text-right text-lg font-semibold tabular-nums', favTextClass)">{{ favSlider }}%</span>
+                        </div>
+                        <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div :class="cn('h-full rounded-full bg-gradient-to-r transition-all', favGrad)" :style="{ width: `${favSlider}%` }" />
+                        </div>
+                        <p :class="cn('mt-1 text-xs font-medium', favTextClass)">{{ favLabelText }}</p>
+                    </div>
+                    <p v-else class="mt-2 text-sm text-slate-400">Not assessed yet — click “Assess now” to set a favourability.</p>
+                    <InputError :message="errors.favorability" />
+                </div>
+
                 <div class="md:col-span-2">
                     <Label for="description">Description</Label>
                     <textarea id="description" v-model="description" rows="3" :class="inputClass" class="!h-auto py-2" />

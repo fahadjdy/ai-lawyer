@@ -35,6 +35,7 @@ class UpdateCaseRequest extends FormRequest
             'case_type' => ['sometimes', 'required', Rule::enum(CaseType::class)],
             'status' => ['sometimes', 'required', Rule::enum(CaseStatus::class)],
             'priority' => ['sometimes', 'required', Rule::enum(CasePriority::class)],
+            'favorability' => ['sometimes', 'nullable', 'integer', 'between:0,100'],
             'description' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'court_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'court_type' => ['sometimes', 'nullable', 'string', 'max:120'],

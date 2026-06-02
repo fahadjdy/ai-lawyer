@@ -66,6 +66,7 @@ class CaseRepository extends BaseRepository
                 'events' => fn ($q) => $q->with('creator:id,uuid,name')
                     ->orderByRaw('COALESCE(occurred_on, DATE(created_at)) DESC')
                     ->orderByDesc('id'),
+                'aiInsights.generator:id,name',
             ])
             ->where('uuid', $uuid)
             ->firstOrFail();

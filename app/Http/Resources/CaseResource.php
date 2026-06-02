@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Enums\TaskStatus;
+use App\Models\CaseAiInsight;
 use App\Models\LegalCase;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -26,6 +28,7 @@ class CaseResource extends JsonResource
             'type' => $this->enumPayload($this->case_type),
             'status' => $this->enumPayload($this->status),
             'priority' => $this->enumPayload($this->priority),
+            'favorability' => $this->favorability,
             'court' => [
                 'name' => $this->court_name,
                 'type' => $this->court_type,
@@ -40,10 +43,16 @@ class CaseResource extends JsonResource
             'client' => new ClientSummaryResource($this->whenLoaded('client')),
             'lead_lawyer' => new UserSummaryResource($this->whenLoaded('leadLawyer')),
             'assignees' => UserSummaryResource::collection($this->whenLoaded('assignees')),
+            // Derived from the already-eager-loaded relations (no extra queries),
+            // powering the detail page's at-a-glance metric strip.
             'counts' => [
-                'hearings' => $this->whenCounted('hearings'),
-                'tasks' => $this->whenCounted('tasks'),
-                'documents' => $this->whenCounted('documents'),
+                'hearings' => $this->whenLoaded('hearings', fn () => $this->hearings->count()),
+                'tasks' => $this->whenLoaded('tasks', fn () => $this->tasks->count()),
+                'tasks_done' => $this->whenLoaded('tasks', fn () => $this->tasks->filter(fn ($t) => $t->status === TaskStatus::Done)->count()),
+                'documents' => $this->whenLoaded('documents', fn () => $this->documents->count()),
+                'evidence' => $this->whenLoaded('evidence', fn () => $this->evidence->count()),
+                'events' => $this->whenLoaded('events', fn () => $this->events->count()),
+                'notes' => $this->whenLoaded('notes', fn () => $this->notes->count()),
             ],
             'hearings' => HearingResource::collection($this->whenLoaded('hearings')),
             'tasks' => TaskResource::collection($this->whenLoaded('tasks')),
@@ -60,6 +69,20 @@ class CaseResource extends JsonResource
                 'created_at' => $e->created_at?->toIso8601String(),
             ])),
             'current_sections' => $this->whenLoaded('events', fn () => $this->events->first(fn ($e) => ! empty($e->sections))?->sections ?? []),
+            // Cached AI results, keyed by kind. is_stale is true once the case (notably its
+            // tracking timeline) has changed since the result was generated.
+            'ai_insights' => $this->whenLoaded('aiInsights', function (): array {
+                $signature = CaseAiInsight::signatureFor($this->resource);
+
+                return $this->aiInsights->mapWithKeys(fn (CaseAiInsight $ins): array => [
+                    $ins->kind => [
+                        'payload' => $ins->payload,
+                        'is_stale' => $ins->signature !== $signature,
+                        'generated_at' => $ins->updated_at?->toIso8601String(),
+                        'generated_by' => $ins->generator?->name,
+                    ],
+                ])->all();
+            }),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
