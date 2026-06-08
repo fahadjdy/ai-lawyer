@@ -53,9 +53,11 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps          # explicit FTPS
+          protocol: ftp           # FTPS data-channel drop kar raha tha; plain FTP par stable
           port: 21
           server-dir: /lexcase.fahad-jadiya.com/
+          timeout: 600000         # 10 min — bade upload par drop na ho
+          log-level: verbose      # debug ke liye; sab theek hone par hata dena
           # Niche di hui cheezein upload NahI hongi:
           exclude: |
             **/.git*
