@@ -50,6 +50,9 @@ enum PermissionType: string
     case ViewAuditLogs = 'audit.view';
     case ManageSettings = 'settings.manage';
 
+    // AI legal assistant (conversational chat). Granted to firm leadership only.
+    case UseAssistant = 'assistant.use';
+
     public function label(): string
     {
         return ucwords(str_replace(['.', '_'], ' ', $this->value));

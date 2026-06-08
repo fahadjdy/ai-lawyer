@@ -26,6 +26,7 @@ import {
     ListChecks,
     ScrollText,
     ShieldCheck,
+    Sparkles,
     Users,
     UsersRound,
 } from 'lucide-vue-next';
@@ -40,7 +41,10 @@ const { can } = usePermissions();
 const groups: NavGroup[] = [
     {
         label: 'Workspace',
-        items: [{ title: 'Dashboard', href: '/dashboard', icon: LayoutGrid }],
+        items: [
+            { title: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
+            { title: 'AI Assistant', href: '/assistant', icon: Sparkles, permission: 'assistant.use' },
+        ],
     },
     {
         label: 'Matters',

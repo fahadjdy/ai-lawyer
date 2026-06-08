@@ -9,6 +9,7 @@ use App\Http\Controllers\Cases\CaseController;
 use App\Http\Controllers\Cases\CaseCrossExamController;
 use App\Http\Controllers\Cases\CaseEventController;
 use App\Http\Controllers\Cases\SuggestSectionsController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
@@ -99,6 +100,24 @@ Route::middleware(['auth'])->group(function (): void {
 
     // Legal Notebook — read-only quick reference of Indian statutes & sections.
     Route::get('legal-notebook', [LegalNotebookController::class, 'index'])->name('legal-notebook.index');
+
+    // AI Assistant — persisted, multi-turn legal chat. Firm leadership only.
+    Route::middleware('can:assistant.use')->group(function (): void {
+        Route::get('assistant', [ChatController::class, 'index'])->name('assistant.index');
+        Route::post('assistant/sessions', [ChatController::class, 'store'])->name('assistant.sessions.store');
+        Route::put('assistant/sessions/{session}', [ChatController::class, 'update'])->name('assistant.sessions.update');
+        Route::delete('assistant/sessions/{session}', [ChatController::class, 'destroy'])->name('assistant.sessions.destroy');
+
+        // Streamed (SSE) reply generation, plus message-level controls.
+        Route::post('assistant/sessions/{session}/stream', [ChatController::class, 'stream'])
+            ->middleware('throttle:30,1')->name('assistant.stream');
+        Route::post('assistant/sessions/{session}/regenerate', [ChatController::class, 'regenerate'])
+            ->middleware('throttle:30,1')->name('assistant.regenerate');
+        Route::post('assistant/sessions/{session}/messages/{message}/edit', [ChatController::class, 'edit'])
+            ->middleware('throttle:30,1')->name('assistant.messages.edit');
+        Route::post('assistant/sessions/{session}/messages/{message}/feedback', [ChatController::class, 'feedback'])
+            ->name('assistant.messages.feedback');
+    });
 
     // Legal Library — printable, editable & customizable document templates.
     Route::get('templates', [TemplateController::class, 'index'])->name('templates.index');

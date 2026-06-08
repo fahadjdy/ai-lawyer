@@ -90,18 +90,23 @@ const [filingDate] = defineField('filing_date');
 const [nextHearingAt] = defineField('next_hearing_at');
 const [leadLawyerId] = defineField('lead_lawyer_id');
 
-const submit = handleSubmit((values) => {
-    processing.value = true;
-    const verb = props.method ?? 'post';
-    router[verb](props.submitUrl, values as Record<string, unknown>, {
-        onError: (serverErrors) => {
-            // Surface server-side validation back into the form.
-            setErrors(serverErrors as Record<string, string>);
-            toasts.error('Please correct the highlighted fields.');
-        },
-        onFinish: () => (processing.value = false),
-    });
-});
+const submit = handleSubmit(
+    (values) => {
+        processing.value = true;
+        const verb = props.method ?? 'post';
+        router[verb](props.submitUrl, values as Record<string, unknown>, {
+            onError: (serverErrors) => {
+                // Surface server-side validation back into the form.
+                setErrors(serverErrors as Record<string, string>);
+                toasts.error('Please correct the highlighted fields.');
+            },
+            onFinish: () => (processing.value = false),
+        });
+    },
+    // Without this, a failed client-side validation makes the Save button look
+    // dead — vee-validate just refuses to call the submit handler. Tell the user.
+    () => toasts.error('Please correct the highlighted fields.'),
+);
 
 // Snapshot of the fields the AI assistant analyzes (kept reactive).
 const aiFields = computed(() => ({
