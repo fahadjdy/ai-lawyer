@@ -27,6 +27,10 @@ class CaseNote extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'case_id' => 'integer',
+            'user_id' => 'integer',
             'is_pinned' => 'boolean',
         ];
     }

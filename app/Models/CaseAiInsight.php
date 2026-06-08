@@ -37,6 +37,10 @@ class CaseAiInsight extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'case_id' => 'integer',
+            'generated_by' => 'integer',
             'payload' => 'array',
         ];
     }

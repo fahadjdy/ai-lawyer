@@ -69,6 +69,11 @@ class LegalCase extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'client_id' => 'integer',
+            'lead_lawyer_id' => 'integer',
+            'created_by' => 'integer',
             'case_type' => CaseType::class,
             'status' => CaseStatus::class,
             'priority' => CasePriority::class,

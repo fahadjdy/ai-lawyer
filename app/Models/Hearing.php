@@ -37,6 +37,10 @@ class Hearing extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'case_id' => 'integer',
+            'created_by' => 'integer',
             'scheduled_at' => 'datetime',
             'next_hearing_at' => 'datetime',
             'status' => HearingStatus::class,

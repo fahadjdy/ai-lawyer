@@ -41,6 +41,13 @@ class Document extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'case_id' => 'integer',
+            'client_id' => 'integer',
+            'folder_id' => 'integer',
+            'parent_id' => 'integer',
+            'uploaded_by' => 'integer',
             'is_latest' => 'boolean',
             'version' => 'integer',
             'size' => 'integer',

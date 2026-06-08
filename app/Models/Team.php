@@ -30,6 +30,8 @@ class Team extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'owner_id' => 'integer',
             'settings' => 'array',
         ];
     }

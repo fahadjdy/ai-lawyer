@@ -38,6 +38,11 @@ class Evidence extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'case_id' => 'integer',
+            'document_id' => 'integer',
+            'created_by' => 'integer',
             'type' => EvidenceType::class,
             'status' => EvidenceStatus::class,
             'collected_at' => 'datetime',

@@ -33,6 +33,9 @@ class ChatMessage extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'chat_session_id' => 'integer',
             'citations' => 'array',
             'rating' => 'integer',
         ];

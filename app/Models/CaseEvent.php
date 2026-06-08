@@ -35,6 +35,10 @@ class CaseEvent extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'case_id' => 'integer',
+            'created_by' => 'integer',
             'stage' => CaseStage::class,
             'sections' => 'array',
             'occurred_on' => 'date',

@@ -37,6 +37,9 @@ class LegalTemplate extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'created_by' => 'integer',
             'variables' => 'array',
             'is_global' => 'boolean',
         ];

@@ -25,6 +25,17 @@ class DocumentFolder extends Model
         'created_by',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'case_id' => 'integer',
+            'parent_id' => 'integer',
+            'created_by' => 'integer',
+        ];
+    }
+
     public function case(): BelongsTo
     {
         return $this->belongsTo(LegalCase::class, 'case_id');

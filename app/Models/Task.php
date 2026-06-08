@@ -40,6 +40,12 @@ class Task extends Model
     protected function casts(): array
     {
         return [
+            'id' => 'integer',
+            'team_id' => 'integer',
+            'case_id' => 'integer',
+            'assigned_to' => 'integer',
+            'created_by' => 'integer',
+            'position' => 'integer',
             'status' => TaskStatus::class,
             'priority' => TaskPriority::class,
             'due_at' => 'datetime',
