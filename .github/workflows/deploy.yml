@@ -71,11 +71,10 @@ jobs:
             **/.env
             **/.env.*
             **/.ftp-deploy-sync-state.json
-            **/storage/logs/**
-            **/storage/framework/cache/data/**
-            **/storage/framework/sessions/**
-            **/storage/framework/views/**
-            **/storage/app/public/**
             **/README.md
             **/phpunit.xml
             **/presentation/**
+            # NOTE: storage/ ko exclude NAHI karte — warna framework/views,
+            # framework/sessions, logs folders server par bante nahi aur Laravel
+            # 500 deta hai. Repo me sirf .gitignore placeholders hain (runtime
+            # data gitignored hai), to ye sirf folder-structure banata hai.
