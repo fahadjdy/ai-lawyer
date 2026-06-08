@@ -1,0 +1,36 @@
+# ============================================================================
+#  PROJECT-ROOT .htaccess — Laravel ko public/ subfolder se serve karta hai
+#  Jagah: /lexcase.fahad-jadiya.com/.htaccess   (public/ se EK level UPAR)
+#
+#  Koi file move nahi hoti. public/index.php apne ../vendor aur ../bootstrap
+#  relative paths se chalta rehta hai. Ye sirf URL ko public/ me bhejta hai.
+#  (Document Root change karne ki zaroorat nahi.)
+# ============================================================================
+
+# Folder listing kabhi mat dikhao (mod_rewrite off ho tab bhi protect kare).
+Options -Indexes -MultiViews
+
+# Crown-jewel files ko naam se block karo — raw-byte protection agar
+# kisi wajah se mod_rewrite disabled ho. (public/ ke assets in patterns
+# se match nahi karte: manifest.json / *.css / *.js / images safe hain.)
+<FilesMatch "(?i)(^\.env|^\.env\..+|^\.git|\.gitignore|\.gitattributes|\.htpasswd|composer\.(json|lock)|package(-lock)?\.json|artisan|phpunit\.xml|.*\.(sqlite3?|db|log|sql|sh|bak|ya?ml)|tsconfig.*\.json|vite\.config\..+|eslint\.config\..+|components\.json)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Kisi host ko base chahiye to ye line uncomment karo:
+    # RewriteBase /
+
+    # Dotfiles / dot-dirs block (/.env, /.git/HEAD ...) — par /.well-known allow.
+    RewriteRule (^|/)\.(?!well-known)  -  [F,L]
+
+    # Homepage -> seedha Laravel front controller (DirectoryIndex par depend nahi).
+    RewriteRule ^$  public/index.php  [L]
+
+    # Baaki sab -> public/ . Guard !^/public/ ise loop-safe banata hai:
+    # pehle rewrite ke baad path public/ se shuru hota hai to rule dobara nahi chalta.
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$  public/$1  [L]
+</IfModule>
