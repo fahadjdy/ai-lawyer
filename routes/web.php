@@ -97,6 +97,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('documents', [DocumentController::class, 'index'])->name('documents.index');
     Route::post('documents', [DocumentController::class, 'store'])->name('documents.store');
     Route::get('documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
+    Route::get('documents/{document}/preview', [DocumentController::class, 'preview'])->name('documents.preview');
     Route::post('documents/{document}/versions', [DocumentController::class, 'storeVersion'])->name('documents.versions.store');
     Route::put('documents/{document}', [DocumentController::class, 'update'])->name('documents.update');
     Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->name('documents.destroy');
@@ -105,6 +106,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
 
     // Evidence — exhibits & chain of custody.
     Route::get('evidence', [EvidenceController::class, 'index'])->name('evidence.index');
+    Route::get('evidence/export', [EvidenceController::class, 'export'])->name('evidence.export');
     Route::post('evidence', [EvidenceController::class, 'store'])->name('evidence.store');
     Route::get('evidence/{evidence}', [EvidenceController::class, 'show'])->name('evidence.show');
     Route::put('evidence/{evidence}', [EvidenceController::class, 'update'])->name('evidence.update');

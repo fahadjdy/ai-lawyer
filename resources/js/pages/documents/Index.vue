@@ -22,7 +22,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDate } from '@/lib/format';
 import type { BreadcrumbItem, Paginated } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Download, FileText, FolderPlus, MoreHorizontal, Search, UploadCloud } from 'lucide-vue-next';
+import { Download, Eye, FileText, FolderPlus, MoreHorizontal, Search, UploadCloud } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 interface DocRow {
@@ -93,6 +93,10 @@ function onDrop(e: DragEvent) {
 
 function downloadDoc(row: DocRow) {
     window.location.href = `/documents/${row.id}/download`;
+}
+
+function previewDoc(row: DocRow) {
+    window.open(`/documents/${row.id}/preview`, '_blank');
 }
 
 // ---- Edit (rename / move) ----
@@ -203,6 +207,7 @@ const columns: Column[] = [
                                 </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" class="w-44">
+                                <DropdownMenuItem @select="previewDoc(row)"><Eye class="size-4" /> Preview</DropdownMenuItem>
                                 <DropdownMenuItem @select="downloadDoc(row)"><Download class="size-4" /> Download</DropdownMenuItem>
                                 <template v-if="canManage">
                                     <DropdownMenuItem @select="openVersion(row)">Upload new version</DropdownMenuItem>

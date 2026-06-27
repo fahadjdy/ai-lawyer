@@ -16,6 +16,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EvidenceController extends Controller
 {
@@ -36,6 +37,32 @@ class EvidenceController extends Controller
             'filters' => $request->only(['status', 'type']),
             'options' => $this->formOptions(),
         ]);
+    }
+
+    /**
+     * Stream the evidence register as a CSV download (the exhibit log).
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $this->authorize('viewAny', Evidence::class);
+
+        $filename = 'evidence-register-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function (): void {
+            $out = fopen('php://output', 'wb');
+            fputcsv($out, ['Reference', 'Title', 'Type', 'Status', 'Case', 'Collected At', 'Collected By', 'Description']);
+
+            Evidence::with('case:id,case_number')->orderByDesc('id')->chunk(200, function ($rows) use ($out): void {
+                foreach ($rows as $e) {
+                    fputcsv($out, [
+                        $e->reference_number, $e->title, $e->type->label(), $e->status->label(),
+                        $e->case?->case_number, $e->collected_at?->toDateTimeString(), $e->collected_by, $e->description,
+                    ]);
+                }
+            });
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv']);
     }
 
     public function store(StoreEvidenceRequest $request): RedirectResponse

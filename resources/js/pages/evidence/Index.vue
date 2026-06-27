@@ -19,7 +19,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDate } from '@/lib/format';
 import type { BreadcrumbItem, EnumOption, Paginated } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { MoreHorizontal, Plus } from 'lucide-vue-next';
+import { Download, MoreHorizontal, Plus } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 interface EvidenceRow {
@@ -99,8 +99,9 @@ const columns: Column[] = [
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="space-y-5 p-4 sm:p-6">
             <PageHeader title="Evidence" description="Track exhibits and chain of custody.">
-                <template v-if="canManage" #actions>
-                    <Button @click="openCreate"><Plus class="size-4" /> Record evidence</Button>
+                <template #actions>
+                    <Button variant="outline" as-child><a href="/evidence/export"><Download class="size-4" /> Export CSV</a></Button>
+                    <Button v-if="canManage" @click="openCreate"><Plus class="size-4" /> Record evidence</Button>
                 </template>
             </PageHeader>
 

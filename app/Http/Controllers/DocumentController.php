@@ -135,6 +135,24 @@ class DocumentController extends Controller
         return $disk->download($document->path, $filename);
     }
 
+    /**
+     * Stream the file inline (Content-Disposition: inline) so the browser can
+     * preview images & PDFs in a new tab instead of forcing a download.
+     */
+    public function preview(Document $document): StreamedResponse
+    {
+        $this->authorize('view', $document);
+
+        $disk = Storage::disk($document->disk);
+        abort_unless($disk->exists($document->path), 404, 'File no longer exists.');
+
+        $filename = $document->name.($document->extension ? '.'.$document->extension : '');
+
+        return $disk->response($document->path, $filename, [
+            'Content-Type' => $document->mime_type ?: 'application/octet-stream',
+        ]);
+    }
+
     public function destroy(Document $document): RedirectResponse
     {
         $this->authorize('delete', $document);
