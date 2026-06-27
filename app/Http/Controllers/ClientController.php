@@ -8,10 +8,12 @@ use App\Enums\ClientType;
 use App\Http\Requests\Clients\StoreClientRequest;
 use App\Http\Requests\Clients\UpdateClientRequest;
 use App\Models\Client;
+use App\Models\Document;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ClientController extends Controller
 {
@@ -67,13 +69,52 @@ class ClientController extends Controller
             ->with('success', "Client {$client->name} created.");
     }
 
+    /**
+     * Stream the firm's clients as a CSV download.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $this->authorize('viewAny', Client::class);
+
+        $filename = 'clients-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function (): void {
+            $out = fopen('php://output', 'wb');
+            fputcsv($out, ['Name', 'Company', 'Type', 'Email', 'Phone', 'City', 'State', 'PAN', 'GSTIN', 'Cases', 'Created']);
+
+            Client::query()->withCount('cases')->orderBy('name')->chunk(200, function ($clients) use ($out): void {
+                foreach ($clients as $c) {
+                    fputcsv($out, [
+                        $c->name, $c->company, $c->type?->label(), $c->email, $c->phone,
+                        $c->city, $c->state, $c->pan, $c->gstin, $c->cases_count, $c->created_at?->toDateString(),
+                    ]);
+                }
+            });
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
     public function show(Client $client): Response
     {
         $this->authorize('view', $client);
 
         $client->load(['cases' => fn ($q) => $q->latest()->limit(20)]);
 
+        $documents = Document::where('client_id', $client->id)
+            ->latestVersions()
+            ->latest()
+            ->limit(50)
+            ->get(['id', 'uuid', 'name', 'extension', 'size', 'mime_type'])
+            ->map(fn (Document $d): array => [
+                'id' => $d->uuid,
+                'name' => $d->name,
+                'extension' => $d->extension,
+                'size' => $d->humanSize(),
+            ]);
+
         return Inertia::render('clients/Show', [
+            'documents' => $documents,
             'client' => [
                 'id' => $client->uuid,
                 'name' => $client->name,

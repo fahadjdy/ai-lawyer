@@ -72,6 +72,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     // Clients — full CRUD (create/edit live on dedicated pages).
     Route::get('clients', [ClientController::class, 'index'])->name('clients.index');
     Route::get('clients/create', [ClientController::class, 'create'])->name('clients.create');
+    Route::get('clients/export', [ClientController::class, 'export'])->name('clients.export');
     Route::post('clients', [ClientController::class, 'store'])->name('clients.store');
     Route::get('clients/{client}', [ClientController::class, 'show'])->name('clients.show');
     Route::get('clients/{client}/edit', [ClientController::class, 'edit'])->name('clients.edit');

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem, EnumOption } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Pencil, Trash2 } from 'lucide-vue-next';
+import { Download, FileText, Pencil, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 interface ClientData {
@@ -27,7 +27,11 @@ interface ClientData {
     cases: { id: string; case_number: string; title: string; status: { label: string; color: string } }[];
 }
 
-const props = defineProps<{ client: ClientData; can: { update: boolean; delete: boolean } }>();
+const props = defineProps<{
+    client: ClientData;
+    documents: { id: string; name: string; extension: string | null; size: string }[];
+    can: { update: boolean; delete: boolean };
+}>();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: 'Clients', href: '/clients' },
     { title: props.client.name, href: `/clients/${props.client.id}` },
@@ -85,6 +89,23 @@ function confirmDelete() {
                             </li>
                         </ul>
                         <EmptyState v-else title="No cases" description="This client has no cases yet." />
+                    </div>
+
+                    <div class="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <h2 class="mb-3 text-sm font-semibold text-slate-900">Documents ({{ documents.length }})</h2>
+                        <ul v-if="documents.length" class="divide-y divide-slate-100">
+                            <li v-for="d in documents" :key="d.id" class="flex items-center justify-between gap-3 py-2.5">
+                                <span class="inline-flex min-w-0 items-center gap-2">
+                                    <FileText class="size-4 shrink-0 text-slate-400" />
+                                    <span class="truncate text-sm text-slate-700">{{ d.name }}</span>
+                                    <span v-if="d.extension" class="rounded bg-slate-100 px-1.5 text-[10px] uppercase text-slate-500">{{ d.extension }}</span>
+                                </span>
+                                <a :href="`/documents/${d.id}/download`" class="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-indigo-600 hover:underline">
+                                    <Download class="size-3.5" /> {{ d.size }}
+                                </a>
+                            </li>
+                        </ul>
+                        <EmptyState v-else title="No documents" description="No documents linked to this client yet." />
                     </div>
                 </div>
             </div>

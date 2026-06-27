@@ -16,7 +16,7 @@ import { useFilters } from '@/composables/useFilters';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem, EnumOption, Paginated } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { MoreHorizontal, Plus, Search } from 'lucide-vue-next';
+import { Download, MoreHorizontal, Plus, Search } from 'lucide-vue-next';
 import { ref } from 'vue';
 
 interface ClientRow {
@@ -76,8 +76,9 @@ function confirmDelete() {
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="space-y-5 p-4 sm:p-6">
             <PageHeader title="Clients" description="People and organizations your firm represents.">
-                <template v-if="can.create" #actions>
-                    <Button as-child><Link href="/clients/create"><Plus class="size-4" /> New client</Link></Button>
+                <template #actions>
+                    <Button variant="outline" as-child><a href="/clients/export"><Download class="size-4" /> Export CSV</a></Button>
+                    <Button v-if="can.create" as-child><Link href="/clients/create"><Plus class="size-4" /> New client</Link></Button>
                 </template>
             </PageHeader>
 
