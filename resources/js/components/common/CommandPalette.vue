@@ -9,6 +9,7 @@ import {
     CalendarDays,
     CheckSquare,
     CornerDownLeft,
+    FileText,
     FolderOpen,
     Gavel,
     LayoutGrid,
@@ -39,6 +40,8 @@ const iconMap: Record<SearchResult['icon'], LucideIcon> = {
     user: User,
     calendar: CalendarDays,
     check: CheckSquare,
+    file: FileText,
+    gavel: Gavel,
 };
 
 // Quick navigation shown when no query is typed — permission-gated jumps that

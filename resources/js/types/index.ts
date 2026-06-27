@@ -30,9 +30,9 @@ export interface EnumOption {
 /** A single hit returned by the global command-palette search endpoint. */
 export interface SearchResult {
     id: string;
-    group: 'Cases' | 'Clients' | 'Hearings' | 'Tasks';
-    type: 'case' | 'client' | 'hearing' | 'task';
-    icon: 'briefcase' | 'user' | 'calendar' | 'check';
+    group: 'Cases' | 'Clients' | 'Hearings' | 'Tasks' | 'Documents' | 'Evidence';
+    type: 'case' | 'client' | 'hearing' | 'task' | 'document' | 'evidence';
+    icon: 'briefcase' | 'user' | 'calendar' | 'check' | 'file' | 'gavel';
     title: string;
     subtitle: string;
     badge: string | null;

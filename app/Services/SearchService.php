@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Models\Client;
+use App\Models\Document;
+use App\Models\Evidence;
 use App\Models\Hearing;
 use App\Models\LegalCase;
 use App\Models\Task;
@@ -51,6 +53,14 @@ class SearchService
 
         if ($user->can('tasks.view')) {
             $groups[] = $this->tasks($term);
+        }
+
+        if ($user->can('documents.view')) {
+            $groups[] = $this->documents($term);
+        }
+
+        if ($user->can('evidence.view')) {
+            $groups[] = $this->evidence($term);
         }
 
         // Flatten the non-empty groups into a single ordered list the palette
@@ -167,6 +177,60 @@ class SearchService
                 'badge' => $t->priority?->label(),
                 'color' => $t->priority?->color(),
                 'url' => $t->case ? "/cases/{$t->case->uuid}" : '/tasks',
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function documents(string $term): array
+    {
+        return Document::query()
+            ->latestVersions()
+            ->where('name', 'like', "%{$term}%")
+            ->with('case:id,uuid,case_number')
+            ->latest()
+            ->limit(self::PER_GROUP)
+            ->get()
+            ->map(fn (Document $d): array => [
+                'id' => $d->uuid,
+                'group' => 'Documents',
+                'type' => 'document',
+                'icon' => 'file',
+                'title' => $d->name,
+                'subtitle' => trim(($d->extension ? mb_strtoupper($d->extension) : 'File').($d->case ? ' · '.$d->case->case_number : ''), ' ·'),
+                'badge' => $d->humanSize(),
+                'color' => 'slate',
+                'url' => $d->case ? "/cases/{$d->case->uuid}" : '/documents',
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function evidence(string $term): array
+    {
+        return Evidence::query()
+            ->where(function ($q) use ($term): void {
+                $q->where('title', 'like', "%{$term}%")
+                    ->orWhere('reference_number', 'like', "%{$term}%")
+                    ->orWhere('description', 'like', "%{$term}%");
+            })
+            ->latest()
+            ->limit(self::PER_GROUP)
+            ->get()
+            ->map(fn (Evidence $e): array => [
+                'id' => $e->uuid,
+                'group' => 'Evidence',
+                'type' => 'evidence',
+                'icon' => 'gavel',
+                'title' => $e->title,
+                'subtitle' => trim(($e->reference_number ?? '').' · '.$e->type->label(), ' ·'),
+                'badge' => $e->status->label(),
+                'color' => $e->status->color(),
+                'url' => "/evidence/{$e->uuid}",
             ])
             ->all();
     }
