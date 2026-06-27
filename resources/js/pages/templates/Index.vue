@@ -8,7 +8,7 @@ import { useFilters } from '@/composables/useFilters';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 import { Head, Link } from '@inertiajs/vue3';
-import { FileText, Plus, Printer, Search } from 'lucide-vue-next';
+import { FileDown, FileText, Plus, Printer, Search } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 
 interface Template {
@@ -41,6 +41,9 @@ const { filters } = useFilters('templates.index', { search: props.filters.search
 const setCategory = (c: string) => {
     filters.category = filters.category === c ? '' : c;
 };
+
+// Open the print-ready document generator (picks a case, fills merge fields).
+const generate = (id: string) => window.open(`/templates/${id}/generate`, '_blank');
 </script>
 
 <template>
@@ -95,6 +98,13 @@ const setCategory = (c: string) => {
                     <div class="mt-3 flex items-center gap-3 border-t border-slate-100 pt-3 text-xs text-slate-400">
                         <span>{{ t.variables.length }} fields</span>
                         <span class="inline-flex items-center gap-1 text-indigo-500"><Printer class="size-3.5" /> Printable</span>
+                        <button
+                            type="button"
+                            class="ml-auto inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline"
+                            @click.stop.prevent="generate(t.id)"
+                        >
+                            <FileDown class="size-3.5" /> Generate
+                        </button>
                     </div>
                 </Link>
             </div>

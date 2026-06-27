@@ -154,6 +154,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('templates/create', [TemplateController::class, 'create'])->name('templates.create');
     Route::post('templates', [TemplateController::class, 'store'])->name('templates.store');
     Route::get('templates/{template}/edit', [TemplateController::class, 'edit'])->name('templates.edit');
+    Route::get('templates/{template}/generate', [TemplateController::class, 'generate'])->name('templates.generate');
     Route::put('templates/{template}', [TemplateController::class, 'update'])->name('templates.update');
     Route::post('templates/{template}/duplicate', [TemplateController::class, 'duplicate'])->name('templates.duplicate');
     Route::delete('templates/{template}', [TemplateController::class, 'destroy'])->name('templates.destroy');

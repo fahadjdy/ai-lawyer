@@ -6,8 +6,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Templates\StoreTemplateRequest;
 use App\Http\Requests\Templates\UpdateTemplateRequest;
+use App\Models\LegalCase;
 use App\Models\LegalSection;
 use App\Models\LegalTemplate;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -76,6 +78,86 @@ class TemplateController extends Controller
         return redirect()
             ->route('templates.edit', $template->uuid)
             ->with('success', 'Document template created.');
+    }
+
+    /**
+     * Generate a finished document from a template: substitute its {{merge}}
+     * fields with a chosen case's (and its client's) data and render a
+     * print-ready page (the browser's "Save as PDF" produces the PDF). Without
+     * a case selected, first shows a case picker.
+     */
+    public function generate(Request $request, LegalTemplate $template): View
+    {
+        $this->ensureCan('templates.view');
+
+        if (! $request->has('case')) {
+            return view('documents.generate-picker', [
+                'template' => $template,
+                'cases' => LegalCase::query()->orderBy('title')->get(['uuid', 'case_number', 'title']),
+            ]);
+        }
+
+        $case = $request->filled('case')
+            ? LegalCase::with('client')->where('uuid', $request->string('case'))->first()
+            : null;
+
+        return view('documents.print', [
+            'title' => $template->title,
+            'body' => $this->fillTemplate((string) $template->body, $this->mergeData($case)),
+        ]);
+    }
+
+    /**
+     * Build the merge-field data map from the case, its client and the firm.
+     *
+     * @return array<string, string>
+     */
+    private function mergeData(?LegalCase $case): array
+    {
+        $team = auth()->user()?->team;
+        $client = $case?->client;
+        $settings = $team?->settings ?? [];
+
+        return array_filter([
+            'today' => now()->format('d F Y'),
+            'date' => now()->format('d/m/Y'),
+            'firm_name' => $team?->name,
+            'firm_email' => $team?->email,
+            'firm_phone' => $team?->phone,
+            'firm_address' => $settings['address'] ?? null,
+            'case_number' => $case?->case_number,
+            'case_title' => $case?->title,
+            'court_name' => $case?->court_name,
+            'court_type' => $case?->court_type,
+            'jurisdiction' => $case?->jurisdiction,
+            'judge_name' => $case?->judge_name,
+            'opposing_party' => $case?->opposing_party,
+            'opposing_counsel' => $case?->opposing_counsel,
+            'filing_date' => $case?->filing_date?->format('d F Y'),
+            'client_name' => $client?->name,
+            'client_company' => $client?->company,
+            'client_email' => $client?->email,
+            'client_phone' => $client?->phone,
+            'client_address' => $client?->address,
+            'client_city' => $client?->city,
+            'client_pan' => $client?->pan,
+            'client_gstin' => $client?->gstin,
+        ], static fn ($v): bool => $v !== null && $v !== '');
+    }
+
+    /**
+     * Replace {{key}} merge fields: known keys get the (escaped) value; unknown
+     * keys become a printable blank to fill by hand.
+     *
+     * @param  array<string, string>  $data
+     */
+    private function fillTemplate(string $body, array $data): string
+    {
+        return (string) preg_replace_callback('/\{\{\s*([a-z0-9_]+)\s*\}\}/i', static function (array $m) use ($data): string {
+            $key = strtolower($m[1]);
+
+            return array_key_exists($key, $data) ? e($data[$key]) : '<span class="blank">&nbsp;</span>';
+        }, $body);
     }
 
     public function edit(LegalTemplate $template): Response
