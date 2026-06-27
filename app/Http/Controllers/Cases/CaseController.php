@@ -75,6 +75,7 @@ class CaseController extends Controller
         return Inertia::render('cases/Show', [
             'case' => new CaseResource($display),
             'stages' => CaseStage::options(),
+            'statuses' => CaseStatus::options(),
             'lawyers' => $this->lawyerOptions(),
             'assignedIds' => $display->assignees->pluck('id')->values(),
         ]);

@@ -56,6 +56,7 @@ interface CaseEventRow {
 const props = defineProps<{
     case: { data: any };
     stages: EnumOption[];
+    statuses: EnumOption[];
     lawyers: { id: number; name: string; designation: string | null; initials: string }[];
     assignedIds: number[];
 }>();
@@ -519,7 +520,14 @@ function confirmDeleteEvent() {
             </div>
         </div>
 
-        <CaseEventForm v-model:open="eventFormOpen" :case-uuid="c.id" :stages="stages" :event="editingEvent" />
+        <CaseEventForm
+            v-model:open="eventFormOpen"
+            :case-uuid="c.id"
+            :stages="stages"
+            :statuses="statuses"
+            :current-status="c.status?.value"
+            :event="editingEvent"
+        />
         <CaseTeamDialog v-model:open="teamOpen" :case-id="c.id" :lawyers="lawyers" :selected="assignedIds" />
         <ConfirmDialog
             v-model:open="confirmEventOpen"

@@ -19,10 +19,19 @@ class CaseEventController extends Controller
 {
     public function store(StoreCaseEventRequest $request, LegalCase $case): RedirectResponse
     {
+        $data = $request->validated();
+        $newStatus = $data['case_status'] ?? null;
+        unset($data['case_status']);
+
         $case->events()->create([
-            ...$request->validated(),
+            ...$data,
             'created_by' => $request->user()->id,
         ]);
+
+        // Optionally advance the case's overall status with this tracking update.
+        if ($newStatus !== null && $newStatus !== $case->status->value) {
+            $case->update(['status' => $newStatus]);
+        }
 
         return back()->with('success', 'Case update added.');
     }

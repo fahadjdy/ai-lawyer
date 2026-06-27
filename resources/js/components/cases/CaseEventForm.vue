@@ -23,12 +23,15 @@ const props = defineProps<{
     open: boolean;
     caseUuid: string;
     stages: EnumOption[];
+    statuses?: EnumOption[];
+    currentStatus?: string;
     event?: CaseEvent | null;
 }>();
 
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>();
 
 const stage = ref('complaint');
+const caseStatus = ref('');
 const title = ref('');
 const occurredOn = ref('');
 const description = ref('');
@@ -50,6 +53,7 @@ watch(
         sectionInput.value = '';
         const e = props.event;
         stage.value = e?.stage?.value ?? 'complaint';
+        caseStatus.value = props.currentStatus ?? '';
         title.value = e?.title ?? '';
         description.value = e?.description ?? '';
         sections.value = [...(e?.sections ?? [])];
@@ -121,7 +125,7 @@ function submit() {
     commitInput();
     processing.value = true;
     errors.value = {};
-    const payload = {
+    const payload: Record<string, unknown> = {
         stage: stage.value,
         title: title.value,
         description: description.value,
@@ -137,6 +141,8 @@ function submit() {
     if (props.event) {
         router.put(`/cases/${props.caseUuid}/events/${props.event.id}`, payload, opts);
     } else {
+        // Only on create may we advance the case's overall status.
+        if (caseStatus.value) payload.case_status = caseStatus.value;
         router.post(`/cases/${props.caseUuid}/events`, payload, opts);
     }
 }
@@ -167,6 +173,15 @@ const inputClass =
                         <input id="e_date" v-model="occurredOn" type="date" :class="inputClass" />
                         <InputError :message="errors.occurred_on" />
                     </div>
+                </div>
+
+                <div v-if="!event && statuses?.length">
+                    <Label for="e_status">Set case status <span class="text-slate-400">(optional)</span></Label>
+                    <select id="e_status" v-model="caseStatus" :class="inputClass">
+                        <option v-for="s in statuses" :key="s.value" :value="s.value">{{ s.label }}</option>
+                    </select>
+                    <p class="mt-1 text-xs text-slate-400">Advance the case's overall status alongside this update.</p>
+                    <InputError :message="errors.case_status" />
                 </div>
 
                 <div>

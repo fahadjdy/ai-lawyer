@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Cases;
 
 use App\Enums\CaseStage;
+use App\Enums\CaseStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -28,6 +29,8 @@ class StoreCaseEventRequest extends FormRequest
             'sections' => ['nullable', 'array', 'max:40'],
             'sections.*' => ['string', 'max:60'],
             'occurred_on' => ['nullable', 'date'],
+            // Optional: advance the case's overall status alongside this update.
+            'case_status' => ['nullable', Rule::enum(CaseStatus::class)],
         ];
     }
 }
