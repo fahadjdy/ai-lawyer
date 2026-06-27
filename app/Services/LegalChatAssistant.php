@@ -68,9 +68,11 @@ class LegalChatAssistant
             }
         }
 
-        // Multimodal: when a case is attached, hand Claude the case's documents &
-        // evidence (images & PDFs) on the latest question so it studies them.
-        $this->attachEvidence($messages, is_array($case['attachments'] ?? null) ? $case['attachments'] : []);
+        // Multimodal: only when the latest question is actually about the case's
+        // files do we attach them (images & PDFs are costly to re-send each turn).
+        if ($this->mentionsEvidence($latest)) {
+            $this->attachEvidence($messages, is_array($case['attachments'] ?? null) ? $case['attachments'] : []);
+        }
 
         // When the question is about the firm's own data, resolve any tool calls
         // in a NON-streamed phase first, then stream the final answer for real.
@@ -155,6 +157,19 @@ class LegalChatAssistant
         }
 
         return (bool) preg_match('/\b[A-Z]{2,}[-\/ ]?\d{2,}\b/', $message);
+    }
+
+    /**
+     * Does the latest message actually ask about the case's files / evidence?
+     * Only then do we attach the case's documents & photos to the turn — they
+     * are costly to re-send, so we skip them on unrelated questions.
+     */
+    private function mentionsEvidence(string $message): bool
+    {
+        return (bool) preg_match(
+            '/\b(document|documents|evidence|exhibit|exhibits|photo|photos|image|images|picture|pictures|pic|pics|file|files|attachment|attachments|pdf|scan|scanned|screenshot|proof|dekh|dekho|dekhna|padh|padho|padhna|dastavej|dastavez|saboot|sabut|tasveer|tasvir)\b/i',
+            $message,
+        );
     }
 
     /**
@@ -361,13 +376,13 @@ class LegalChatAssistant
         - Do NOT use tools for purely general legal questions that need no firm-specific data.
 
         Studying the case's evidence — you can SEE files:
-        - When a case is attached, its documents and evidence may be provided to you directly
-          as images and PDFs. Study them carefully and ground your answer in what you actually
-          see — text in scanned documents, the contents of photos, figures in a PDF. Refer to
-          specific exhibits by name when you rely on them.
-        - The case context lists every document and evidence item on record. Files you cannot
-          view directly (video, audio, office documents) are named there — reason from their
-          description and say plainly that you could not view the file itself.
+        - When a case is attached and the question concerns its files, the case's documents and
+          evidence are provided to you directly as images and PDFs. Study them carefully and
+          ground your answer in what you actually see — text in scanned documents, the contents
+          of photos, figures in a PDF. Refer to specific exhibits by name when you rely on them.
+        - The case context lists the documents and evidence on record. Some files (e.g. office
+          documents) can't be shown to you — they are named there; reason from their description
+          and say plainly you could not open the file itself.
         PROMPT;
 
         $context = trim(implode("\n\n", array_filter([$this->caseContext($case), trim($ragContext)])));

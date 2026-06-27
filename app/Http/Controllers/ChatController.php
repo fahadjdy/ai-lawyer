@@ -431,8 +431,14 @@ class ChatController extends Controller
             return true;
         };
 
+        // Video & audio can't be processed by the model — skip them entirely.
+        $skip = fn (?string $mime): bool => str_starts_with((string) $mime, 'video/') || str_starts_with((string) $mime, 'audio/');
+
         $docLines = [];
         foreach ($case->documents()->latestVersions()->get(['id', 'name', 'disk', 'path', 'mime_type', 'extension']) as $d) {
+            if ($skip($d->mime_type)) {
+                continue;
+            }
             $viewable = $consider($d);
             $docLines[] = '- '.$d->name.($d->extension ? '.'.$d->extension : '').' ('.($d->mime_type ?: 'file').')'.($viewable ? ' — attached for you to view' : '');
         }
@@ -441,7 +447,7 @@ class ChatController extends Controller
         foreach ($case->evidence()->with('document:id,name,disk,path,mime_type,extension')->get() as $e) {
             /** @var Evidence $e */
             $line = '- '.($e->reference_number ? '['.$e->reference_number.'] ' : '').$e->title.' ('.$e->type->label().', '.$e->status->label().')';
-            if ($e->document) {
+            if ($e->document && ! $skip($e->document->mime_type)) {
                 $viewable = $consider($e->document);
                 $line .= ' — file: '.$e->document->name.($viewable ? ' (attached for you to view)' : '');
             }
