@@ -13,6 +13,7 @@ use App\Http\Controllers\Cases\SuggestSectionsController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeployController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\DocumentFolderController;
 use App\Http\Controllers\EvidenceController;
@@ -53,6 +54,9 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('cases/{case}/cross-questions', CaseCrossExamController::class)->middleware('throttle:20,1')->name('cases.cross-questions');
 
     // Case Tracking timeline — stage updates with evolving sections.
+    // Co-assigned legal team for a case (gated by cases.assign).
+    Route::post('cases/{case}/assignees', [CaseController::class, 'assignees'])->name('cases.assignees.update');
+
     Route::post('cases/{case}/events', [CaseEventController::class, 'store'])->name('cases.events.store');
     Route::put('cases/{case}/events/{event}', [CaseEventController::class, 'update'])->name('cases.events.update');
     Route::delete('cases/{case}/events/{event}', [CaseEventController::class, 'destroy'])->name('cases.events.destroy');
@@ -115,6 +119,10 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::middleware('can:settings.manage')->group(function (): void {
         Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
         Route::put('roles/{role}', [RoleController::class, 'update'])->name('roles.update');
+
+        // Deploy helper — run pending migrations + clear caches from the browser
+        // (FTP-only host has no SSH/artisan). Admin-only; returns plain-text log.
+        Route::get('deploy/migrate', [DeployController::class, 'migrate'])->name('deploy.migrate');
     });
 
     Route::get('activity', [ActivityLogController::class, 'index'])->middleware('can:audit.view')->name('activity.index');

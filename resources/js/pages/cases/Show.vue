@@ -3,6 +3,7 @@ import CaseAiAssistant from '@/components/cases/CaseAiAssistant.vue';
 import CaseCrossExam from '@/components/cases/CaseCrossExam.vue';
 import CaseEventForm from '@/components/cases/CaseEventForm.vue';
 import CaseNotes from '@/components/cases/CaseNotes.vue';
+import CaseTeamDialog from '@/components/cases/CaseTeamDialog.vue';
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 import EmptyState from '@/components/common/EmptyState.vue';
 import StatTile from '@/components/common/StatTile.vue';
@@ -23,7 +24,9 @@ import {
     CalendarClock,
     CalendarDays,
     Clock,
+    Download,
     FileText,
+    FolderOpen,
     Gauge,
     Gavel,
     GitBranch,
@@ -32,6 +35,7 @@ import {
     Pencil,
     Plus,
     Scale,
+    ShieldCheck,
     Trash2,
     User,
     Users,
@@ -49,8 +53,16 @@ interface CaseEventRow {
     created_at: string;
 }
 
-const props = defineProps<{ case: { data: any }; stages: EnumOption[] }>();
+const props = defineProps<{
+    case: { data: any };
+    stages: EnumOption[];
+    lawyers: { id: number; name: string; designation: string | null; initials: string }[];
+    assignedIds: number[];
+}>();
 const { can } = usePermissions();
+
+// ---- Legal team (co-assignees) ----
+const teamOpen = ref(false);
 
 const c = computed(() => props.case.data);
 const events = computed<CaseEventRow[]>(() => c.value.events ?? []);
@@ -389,6 +401,40 @@ function confirmDeleteEvent() {
                             </li>
                         </ul>
                         <EmptyState v-else :icon="ListChecks" title="No tasks" description="No tasks for this case." />
+                    </DashboardCard>
+
+                    <!-- Documents & Evidence -->
+                    <DashboardCard title="Documents & Evidence" subtitle="Files & exhibits on record" :icon="FolderOpen" accent="emerald" :delay="300">
+                        <div v-if="c.documents?.length || c.evidence?.length" class="space-y-4">
+                            <div v-if="c.documents?.length">
+                                <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Documents</p>
+                                <ul class="divide-y divide-slate-100">
+                                    <li v-for="d in c.documents" :key="d.id" class="flex items-center justify-between gap-3 py-2">
+                                        <span class="inline-flex min-w-0 items-center gap-2">
+                                            <FileText class="size-4 shrink-0 text-slate-400" />
+                                            <span class="truncate text-sm text-slate-700">{{ d.name }}</span>
+                                            <span v-if="d.extension" class="rounded bg-slate-100 px-1.5 text-[10px] uppercase text-slate-500">{{ d.extension }}</span>
+                                        </span>
+                                        <a :href="`/documents/${d.id}/download`" class="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-indigo-600 hover:underline">
+                                            <Download class="size-3.5" /> {{ d.size }}
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div v-if="c.evidence?.length">
+                                <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Evidence</p>
+                                <ul class="divide-y divide-slate-100">
+                                    <li v-for="e in c.evidence" :key="e.id" class="flex items-center justify-between gap-3 py-2">
+                                        <Link :href="`/evidence/${e.id}`" class="inline-flex min-w-0 items-center gap-2 hover:opacity-80">
+                                            <Gavel class="size-4 shrink-0 text-slate-400" />
+                                            <span class="truncate text-sm text-slate-700">{{ e.reference_number ? `[${e.reference_number}] ` : '' }}{{ e.title }}</span>
+                                        </Link>
+                                        <StatusBadge :label="e.status.label" :color="e.status.color" />
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <EmptyState v-else :icon="ShieldCheck" title="No files" description="No documents or evidence linked to this case yet." />
                     </DashboardCard>
 
                     <!-- Notes -->

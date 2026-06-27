@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Services\CaseService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -69,10 +70,34 @@ class CaseController extends Controller
     {
         $this->authorize('view', $case);
 
+        $display = $this->cases->find($case->uuid);
+
         return Inertia::render('cases/Show', [
-            'case' => new CaseResource($this->cases->find($case->uuid)),
+            'case' => new CaseResource($display),
             'stages' => CaseStage::options(),
+            'lawyers' => $this->lawyerOptions(),
+            'assignedIds' => $display->assignees->pluck('id')->values(),
         ]);
+    }
+
+    /**
+     * Sync the case's co-assigned lawyers (the "legal team"). Gated by the
+     * cases.assign permission via the policy.
+     */
+    public function assignees(Request $request, LegalCase $case): RedirectResponse
+    {
+        $this->authorize('assign', $case);
+
+        $teamId = $request->user()->team_id;
+
+        $data = $request->validate([
+            'assignees' => ['present', 'array'],
+            'assignees.*' => ['integer', Rule::exists('users', 'id')->where('team_id', $teamId)],
+        ]);
+
+        $case->assignees()->sync($data['assignees']);
+
+        return back()->with('success', 'Legal team updated.');
     }
 
     public function edit(LegalCase $case): Response
@@ -152,11 +177,21 @@ class CaseController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'uuid', 'name', 'company'])
                 ->map(fn (Client $c) => ['id' => $c->id, 'name' => $c->company ? "{$c->name} ({$c->company})" : $c->name]),
-            'lawyers' => User::query()
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get(['id', 'uuid', 'name', 'designation'])
-                ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'designation' => $u->designation]),
+            'lawyers' => $this->lawyerOptions(),
         ];
+    }
+
+    /**
+     * The firm's active members, for assignee pickers.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function lawyerOptions()
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'uuid', 'name', 'designation'])
+            ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'designation' => $u->designation, 'initials' => $u->initials()]);
     }
 }

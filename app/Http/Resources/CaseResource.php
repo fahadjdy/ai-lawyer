@@ -57,6 +57,22 @@ class CaseResource extends JsonResource
             'hearings' => HearingResource::collection($this->whenLoaded('hearings')),
             'tasks' => TaskResource::collection($this->whenLoaded('tasks')),
             'notes' => CaseNoteResource::collection($this->whenLoaded('notes')),
+            'documents' => $this->whenLoaded('documents', fn () => $this->documents->map(fn ($d): array => [
+                'id' => $d->uuid,
+                'name' => $d->name,
+                'extension' => $d->extension,
+                'size' => $d->humanSize(),
+                'version' => $d->version,
+                'created_at' => $d->created_at?->toIso8601String(),
+            ])),
+            'evidence' => $this->whenLoaded('evidence', fn () => $this->evidence->map(fn ($e): array => [
+                'id' => $e->uuid,
+                'reference_number' => $e->reference_number,
+                'title' => $e->title,
+                'type' => ['value' => $e->type->value, 'label' => $e->type->label()],
+                'status' => ['label' => $e->status->label(), 'color' => $e->status->color()],
+                'collected_at' => $e->collected_at?->toDateString(),
+            ])),
             // Case Tracking timeline (newest first) + the latest applicable sections.
             'events' => $this->whenLoaded('events', fn () => $this->events->map(fn ($e) => [
                 'id' => $e->uuid,
