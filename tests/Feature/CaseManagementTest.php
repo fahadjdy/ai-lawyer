@@ -82,3 +82,69 @@ it('validates required fields when creating a case', function () {
     $this->post('/cases', ['title' => ''])
         ->assertSessionHasErrors(['title', 'case_type', 'status', 'priority']);
 });
+
+it('archives (soft-deletes) a case', function () {
+    $user = actingAsFirmOwner();
+    $case = LegalCase::factory()->create(['team_id' => $user->team_id, 'created_by' => $user->id]);
+
+    $this->delete("/cases/{$case->uuid}")->assertRedirect();
+
+    $this->assertSoftDeleted('cases', ['id' => $case->id]);
+});
+
+it('lists trashed cases', function () {
+    $user = actingAsFirmOwner();
+    $case = LegalCase::factory()->create(['team_id' => $user->team_id, 'created_by' => $user->id]);
+    $case->delete();
+
+    $this->get('/cases?trashed=1')->assertOk();
+});
+
+it('restores a soft-deleted case', function () {
+    $user = actingAsFirmOwner();
+    $case = LegalCase::factory()->create(['team_id' => $user->team_id, 'created_by' => $user->id]);
+    $case->delete();
+
+    $this->put("/cases/{$case->uuid}/restore")->assertRedirect();
+
+    $this->assertNotSoftDeleted('cases', ['id' => $case->id]);
+});
+
+it('permanently deletes a trashed case', function () {
+    $user = actingAsFirmOwner();
+    $case = LegalCase::factory()->create(['team_id' => $user->team_id, 'created_by' => $user->id]);
+    $case->delete();
+
+    $this->delete("/cases/{$case->uuid}/force")->assertRedirect();
+
+    $this->assertDatabaseMissing('cases', ['id' => $case->id]);
+});
+
+it('bulk-archives selected cases', function () {
+    $user = actingAsFirmOwner();
+    $cases = LegalCase::factory()->count(2)->create(['team_id' => $user->team_id, 'created_by' => $user->id]);
+
+    $this->post('/cases/bulk', [
+        'action' => 'archive',
+        'ids' => $cases->pluck('uuid')->all(),
+    ])->assertRedirect();
+
+    foreach ($cases as $case) {
+        $this->assertSoftDeleted('cases', ['id' => $case->id]);
+    }
+});
+
+it('bulk-restores trashed cases', function () {
+    $user = actingAsFirmOwner();
+    $cases = LegalCase::factory()->count(2)->create(['team_id' => $user->team_id, 'created_by' => $user->id]);
+    $cases->each->delete();
+
+    $this->post('/cases/bulk', [
+        'action' => 'restore',
+        'ids' => $cases->pluck('uuid')->all(),
+    ])->assertRedirect();
+
+    foreach ($cases as $case) {
+        $this->assertNotSoftDeleted('cases', ['id' => $case->id]);
+    }
+});

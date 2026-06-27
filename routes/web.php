@@ -69,6 +69,12 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::put('cases/{case}/notes/{note}', [CaseNoteController::class, 'update'])->name('cases.notes.update');
     Route::delete('cases/{case}/notes/{note}', [CaseNoteController::class, 'destroy'])->name('cases.notes.destroy');
 
+    // Trash, restore & bulk actions (registered before the resource so the
+    // literal segments win over the {case} wildcard; restore/force bind trashed).
+    Route::post('cases/bulk', [CaseController::class, 'bulk'])->name('cases.bulk');
+    Route::put('cases/{case}/restore', [CaseController::class, 'restore'])->withTrashed()->name('cases.restore');
+    Route::delete('cases/{case}/force', [CaseController::class, 'forceDelete'])->withTrashed()->name('cases.force-delete');
+
     Route::resource('cases', CaseController::class)->parameters(['cases' => 'case']);
 
     // Clients — full CRUD (create/edit live on dedicated pages).

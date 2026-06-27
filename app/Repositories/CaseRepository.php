@@ -45,6 +45,10 @@ class CaseRepository extends BaseRepository
                 isset($filters['assigned_to']),
                 fn (Builder $q) => $q->whereHas('assignees', fn (Builder $a) => $a->where('users.id', $filters['assigned_to'])),
             )
+            ->when(
+                ($filters['trashed'] ?? false),
+                fn (Builder $q) => $q->onlyTrashed(),
+            )
             ->applySorting($filters['sort'] ?? '-created_at');
     }
 

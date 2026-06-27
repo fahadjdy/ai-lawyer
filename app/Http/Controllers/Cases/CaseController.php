@@ -9,6 +9,7 @@ use App\Enums\CasePriority;
 use App\Enums\CaseStage;
 use App\Enums\CaseStatus;
 use App\Enums\CaseType;
+use App\Enums\PermissionType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Cases\StoreCaseRequest;
 use App\Http\Requests\Cases\UpdateCaseRequest;
@@ -38,13 +39,19 @@ class CaseController extends Controller
         $this->authorize('viewAny', LegalCase::class);
 
         $filters = $request->only(['search', 'status', 'priority', 'case_type', 'sort', 'only_active']);
+        $filters['trashed'] = $request->boolean('trashed');
 
         $cases = $this->cases->paginate($filters, $request->integer('per_page', 15));
 
         return Inertia::render('cases/Index', [
             'cases' => CaseListResource::collection($cases),
-            'filters' => $filters,
+            'filters' => array_merge($filters, ['sort' => $filters['sort'] ?? null]),
             'options' => $this->filterOptions(),
+            'trashedCount' => LegalCase::onlyTrashed()->count(),
+            'can' => [
+                'create' => $request->user()->can('create', LegalCase::class),
+                'delete' => $request->user()->can(PermissionType::DeleteCases->value),
+            ],
         ]);
     }
 
@@ -149,6 +156,65 @@ class CaseController extends Controller
         return redirect()
             ->route('cases.index')
             ->with('success', 'Case archived.');
+    }
+
+    /**
+     * Restore a soft-deleted case. The route binds with trashed models.
+     */
+    public function restore(LegalCase $case): RedirectResponse
+    {
+        $this->authorize('restore', $case);
+
+        $case->restore();
+
+        return back()->with('success', "Case {$case->case_number} restored.");
+    }
+
+    /**
+     * Permanently remove a soft-deleted case. The route binds with trashed models.
+     */
+    public function forceDelete(LegalCase $case): RedirectResponse
+    {
+        $this->authorize('forceDelete', $case);
+
+        $number = $case->case_number;
+        $case->forceDelete();
+
+        return back()->with('success', "Case {$number} permanently deleted.");
+    }
+
+    /**
+     * Apply an action to many cases at once. "archive" soft-deletes live cases;
+     * "restore" and "delete" operate on trashed ones. All queries are team-
+     * scoped through the model's global scope, so only the firm's cases match.
+     */
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:archive,restore,delete'],
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['string'],
+        ]);
+
+        abort_unless($request->user()->can(PermissionType::DeleteCases->value), 403);
+
+        $query = LegalCase::query()->whereIn('uuid', $data['ids']);
+        if ($data['action'] !== 'archive') {
+            $query->onlyTrashed();
+        }
+
+        $cases = $query->get();
+        foreach ($cases as $case) {
+            match ($data['action']) {
+                'archive' => $case->delete(),
+                'restore' => $case->restore(),
+                'delete' => $case->forceDelete(),
+            };
+        }
+
+        $verb = ['archive' => 'archived', 'restore' => 'restored', 'delete' => 'permanently deleted'][$data['action']];
+
+        return back()->with('success', "{$cases->count()} case(s) {$verb}.");
     }
 
     /**

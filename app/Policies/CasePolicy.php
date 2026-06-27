@@ -39,6 +39,16 @@ class CasePolicy
         return $this->sameTeam($user, $case) && $user->can(PermissionType::DeleteCases->value);
     }
 
+    public function restore(User $user, LegalCase $case): bool
+    {
+        return $this->sameTeam($user, $case) && $user->can(PermissionType::DeleteCases->value);
+    }
+
+    public function forceDelete(User $user, LegalCase $case): bool
+    {
+        return $this->sameTeam($user, $case) && $user->can(PermissionType::DeleteCases->value);
+    }
+
     public function assign(User $user, LegalCase $case): bool
     {
         return $this->sameTeam($user, $case) && $user->can(PermissionType::AssignCases->value);

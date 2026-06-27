@@ -39,6 +39,7 @@ class CaseListResource extends JsonResource
             'court_name' => $this->court_name,
             'next_hearing_at' => $this->next_hearing_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
+            'deleted_at' => $this->deleted_at?->toIso8601String(),
         ];
     }
 }
