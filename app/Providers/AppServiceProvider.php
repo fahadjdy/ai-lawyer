@@ -7,11 +7,15 @@ namespace App\Providers;
 use App\Events\CaseCreated;
 use App\Listeners\SendCaseAssignmentNotifications;
 use App\Models\Client;
+use App\Models\Document;
+use App\Models\Evidence;
 use App\Models\Hearing;
 use App\Models\LegalCase;
 use App\Models\Task;
 use App\Policies\CasePolicy;
 use App\Policies\ClientPolicy;
+use App\Policies\DocumentPolicy;
+use App\Policies\EvidencePolicy;
 use App\Policies\HearingPolicy;
 use App\Policies\TaskPolicy;
 use Illuminate\Support\Facades\Event;
@@ -36,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Client::class, ClientPolicy::class);
         Gate::policy(Hearing::class, HearingPolicy::class);
         Gate::policy(Task::class, TaskPolicy::class);
+        Gate::policy(Document::class, DocumentPolicy::class);
+        Gate::policy(Evidence::class, EvidencePolicy::class);
 
         // Domain event wiring (event discovery is disabled by default in L12).
         Event::listen(CaseCreated::class, SendCaseAssignmentNotifications::class);

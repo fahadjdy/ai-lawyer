@@ -13,6 +13,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\DocumentFolderController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\HearingController;
 use App\Http\Controllers\LegalNotebookController;
@@ -81,9 +82,23 @@ Route::middleware(['auth'])->group(function (): void {
     Route::put('tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::delete('tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
 
-    // Documents & Evidence
+    // Documents — secure repository with folders, downloads & versioning.
     Route::get('documents', [DocumentController::class, 'index'])->name('documents.index');
+    Route::post('documents', [DocumentController::class, 'store'])->name('documents.store');
+    Route::get('documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
+    Route::post('documents/{document}/versions', [DocumentController::class, 'storeVersion'])->name('documents.versions.store');
+    Route::put('documents/{document}', [DocumentController::class, 'update'])->name('documents.update');
+    Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->name('documents.destroy');
+    Route::post('document-folders', [DocumentFolderController::class, 'store'])->name('document-folders.store');
+    Route::delete('document-folders/{folder}', [DocumentFolderController::class, 'destroy'])->name('document-folders.destroy');
+
+    // Evidence — exhibits & chain of custody.
     Route::get('evidence', [EvidenceController::class, 'index'])->name('evidence.index');
+    Route::post('evidence', [EvidenceController::class, 'store'])->name('evidence.store');
+    Route::get('evidence/{evidence}', [EvidenceController::class, 'show'])->name('evidence.show');
+    Route::put('evidence/{evidence}', [EvidenceController::class, 'update'])->name('evidence.update');
+    Route::delete('evidence/{evidence}', [EvidenceController::class, 'destroy'])->name('evidence.destroy');
+    Route::post('evidence/{evidence}/custody', [EvidenceController::class, 'addCustody'])->name('evidence.custody.store');
 
     // Firm administration — team members (add / edit / remove).
     Route::get('team', [TeamController::class, 'index'])->name('team.index');

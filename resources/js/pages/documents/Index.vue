@@ -1,37 +1,138 @@
 <script setup lang="ts">
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 import DataTable, { type Column } from '@/components/common/DataTable.vue';
 import PageHeader from '@/components/common/PageHeader.vue';
 import Pagination from '@/components/common/Pagination.vue';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
+import DocumentEditDialog from '@/components/documents/DocumentEditDialog.vue';
+import DocumentUploadDialog from '@/components/documents/DocumentUploadDialog.vue';
+import NewFolderDialog from '@/components/documents/NewFolderDialog.vue';
+import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { usePermissions } from '@/composables/usePermissions';
 import { useFilters } from '@/composables/useFilters';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDate } from '@/lib/format';
 import type { BreadcrumbItem, Paginated } from '@/types';
-import { Head, Link } from '@inertiajs/vue3';
-import { FileText, Search, UploadCloud } from 'lucide-vue-next';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { Download, FileText, FolderPlus, MoreHorizontal, Search, UploadCloud } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 
 interface DocRow {
     id: string;
     name: string;
+    original_name: string;
     extension: string | null;
+    mime_type: string | null;
     size: string;
     version: number;
+    versions_count: number;
     case: { id: string; case_number: string } | null;
+    case_id: number | null;
+    folder: { id: string; name: string } | null;
+    folder_id: number | null;
     uploaded_by: string | null;
     created_at: string;
 }
 
-const props = defineProps<{ documents: Paginated<DocRow>; filters: { search?: string } }>();
+const props = defineProps<{
+    documents: Paginated<DocRow>;
+    filters: { search?: string; folder?: string };
+    folders: { id: number; uuid: string; name: string }[];
+    options: { cases: { id: number; name: string }[] };
+}>();
+
+const { can } = usePermissions();
+const canManage = computed(() => can('documents.manage'));
+
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Documents', href: '/documents' }];
-const { filters } = useFilters('documents.index', { search: props.filters.search ?? '' });
+const { filters } = useFilters('documents.index', { search: props.filters.search ?? '', folder: props.filters.folder ?? '' });
+
+const dialogOptions = computed(() => ({ cases: props.options.cases, folders: props.folders }));
+const folderFilterOptions = computed(() => [
+    { value: '', label: 'All folders' },
+    ...props.folders.map((f) => ({ value: f.uuid, label: f.name })),
+]);
+
+// ---- Upload (create + drag & drop) ----
+const uploadOpen = ref(false);
+const uploadMode = ref<'create' | 'version'>('create');
+const versionTarget = ref<DocRow | null>(null);
+const presetFile = ref<File | null>(null);
+const dragging = ref(false);
+
+function openUpload() {
+    uploadMode.value = 'create';
+    versionTarget.value = null;
+    presetFile.value = null;
+    uploadOpen.value = true;
+}
+function openVersion(row: DocRow) {
+    uploadMode.value = 'version';
+    versionTarget.value = row;
+    presetFile.value = null;
+    uploadOpen.value = true;
+}
+function onDrop(e: DragEvent) {
+    dragging.value = false;
+    if (!canManage.value) return;
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    uploadMode.value = 'create';
+    versionTarget.value = null;
+    presetFile.value = file;
+    uploadOpen.value = true;
+}
+
+function downloadDoc(row: DocRow) {
+    window.location.href = `/documents/${row.id}/download`;
+}
+
+// ---- Edit (rename / move) ----
+const editOpen = ref(false);
+const editing = ref<DocRow | null>(null);
+function openEdit(row: DocRow) {
+    editing.value = row;
+    editOpen.value = true;
+}
+
+// ---- New folder ----
+const folderOpen = ref(false);
+
+// ---- Delete ----
+const confirmOpen = ref(false);
+const deleting = ref<DocRow | null>(null);
+function askDelete(row: DocRow) {
+    deleting.value = row;
+    confirmOpen.value = true;
+}
+function confirmDelete() {
+    if (!deleting.value) return;
+    router.delete(`/documents/${deleting.value.id}`, {
+        preserveScroll: true,
+        onFinish: () => {
+            confirmOpen.value = false;
+            deleting.value = null;
+        },
+    });
+}
 
 const columns: Column[] = [
-    { key: 'name', label: 'Name' },
+    { key: 'name', label: 'Name', primary: true },
     { key: 'case', label: 'Case' },
+    { key: 'folder', label: 'Folder' },
     { key: 'size', label: 'Size' },
     { key: 'version', label: 'Ver.', align: 'center' },
     { key: 'uploaded_by', label: 'Uploaded by' },
     { key: 'created_at', label: 'Date' },
+    { key: 'actions', label: '', align: 'right', hideLabelOnMobile: true },
 ];
 </script>
 
@@ -39,19 +140,38 @@ const columns: Column[] = [
     <Head title="Documents" />
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="space-y-5 p-4 sm:p-6">
-            <PageHeader title="Documents" description="Secure document repository with versioning." />
+            <PageHeader title="Documents" description="Secure document repository with versioning.">
+                <template v-if="canManage" #actions>
+                    <Button variant="outline" @click="folderOpen = true"><FolderPlus class="size-4" /> New folder</Button>
+                    <Button @click="openUpload"><UploadCloud class="size-4" /> Upload</Button>
+                </template>
+            </PageHeader>
 
-            <!-- Drag & drop upload zone (UI shell; wired in next phase) -->
-            <div class="flex items-center justify-between gap-4 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
+            <!-- Drag & drop upload zone -->
+            <div
+                v-if="canManage"
+                class="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-dashed p-5 text-sm transition"
+                :class="dragging ? 'border-indigo-400 bg-indigo-50/60 text-indigo-600' : 'border-slate-300 bg-white text-slate-500 hover:border-indigo-300'"
+                @click="openUpload"
+                @dragover.prevent="dragging = true"
+                @dragenter.prevent="dragging = true"
+                @dragleave.prevent="dragging = false"
+                @drop.prevent="onDrop"
+            >
                 <div class="flex items-center gap-3">
-                    <UploadCloud class="size-5 text-slate-400" />
-                    <span>Drag &amp; drop files here, or browse. Supports PDF, DOCX, images, audio &amp; video.</span>
+                    <UploadCloud class="size-5" :class="dragging ? 'text-indigo-500' : 'text-slate-400'" />
+                    <span>Drag &amp; drop a file here, or click to browse. Supports PDF, DOCX, images, audio &amp; video.</span>
                 </div>
             </div>
 
-            <div class="relative max-w-md">
-                <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                <Input v-model="filters.search" placeholder="Search documents…" class="pl-9" />
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div class="relative sm:max-w-md sm:flex-1">
+                    <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <Input v-model="filters.search" placeholder="Search documents…" class="pl-9" />
+                </div>
+                <div class="sm:w-56">
+                    <SearchableSelect v-model="filters.folder" :options="folderFilterOptions" placeholder="All folders" />
+                </div>
             </div>
 
             <DataTable :columns="columns" :rows="documents.data" row-key="id" empty-title="No documents">
@@ -66,8 +186,34 @@ const columns: Column[] = [
                     <Link v-if="row.case" :href="`/cases/${row.case.id}`" class="text-indigo-600 hover:underline">{{ row.case.case_number }}</Link>
                     <span v-else>—</span>
                 </template>
-                <template #cell-version="{ row }">v{{ row.version }}</template>
+                <template #cell-folder="{ row }">{{ row.folder?.name ?? '—' }}</template>
+                <template #cell-version="{ row }">
+                    <span class="inline-flex items-center gap-1">
+                        v{{ row.version }}
+                        <span v-if="row.versions_count > 0" class="rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-500">{{ row.versions_count + 1 }}</span>
+                    </span>
+                </template>
                 <template #cell-created_at="{ row }">{{ formatDate(row.created_at) }}</template>
+                <template #cell-actions="{ row }">
+                    <div class="flex justify-end" @click.stop>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger as-child>
+                                <button class="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="Document actions">
+                                    <MoreHorizontal class="size-4" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" class="w-44">
+                                <DropdownMenuItem @select="downloadDoc(row)"><Download class="size-4" /> Download</DropdownMenuItem>
+                                <template v-if="canManage">
+                                    <DropdownMenuItem @select="openVersion(row)">Upload new version</DropdownMenuItem>
+                                    <DropdownMenuItem @select="openEdit(row)">Rename / move</DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem class="text-rose-600 focus:text-rose-700" @select="askDelete(row)">Delete</DropdownMenuItem>
+                                </template>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                </template>
             </DataTable>
 
             <div class="flex items-center justify-between">
@@ -75,5 +221,23 @@ const columns: Column[] = [
                 <Pagination :links="documents.links" />
             </div>
         </div>
+
+        <DocumentUploadDialog
+            v-model:open="uploadOpen"
+            :mode="uploadMode"
+            :target="versionTarget"
+            :preset-file="presetFile"
+            :options="dialogOptions"
+        />
+        <DocumentEditDialog v-model:open="editOpen" :document="editing" :options="dialogOptions" />
+        <NewFolderDialog v-model:open="folderOpen" :options="{ cases: options.cases }" />
+
+        <ConfirmDialog
+            v-model:open="confirmOpen"
+            title="Delete document?"
+            :description="`“${deleting?.name ?? ''}” will be removed. Earlier versions stay intact.`"
+            confirm-label="Delete document"
+            @confirm="confirmDelete"
+        />
     </AppLayout>
 </template>
