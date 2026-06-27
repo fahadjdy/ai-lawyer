@@ -11,10 +11,12 @@ use App\Models\LegalCase;
 use App\Models\Task;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\RolePermissions;
 use App\Support\TeamContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Seeds a fully populated demo firm so the UI has realistic content out of the box.
@@ -33,6 +35,11 @@ class DemoSeeder extends Seeder
 
         // Scope all subsequent creates to this firm.
         TeamContext::set($team->id);
+
+        // Provision this firm's own per-team roles and point Spatie at them.
+        RolePermissions::ensurePermissions();
+        RolePermissions::provision($team->id);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($team->id);
 
         $owner = $this->makeUser($team->id, 'Aarav Sterling', 'admin@lexcase.test', 'Managing Partner', RoleType::FirmOwner);
         $team->update(['owner_id' => $owner->id]);
@@ -73,6 +80,7 @@ class DemoSeeder extends Seeder
             });
 
         TeamContext::flush();
+        app(PermissionRegistrar::class)->setPermissionsTeamId(null);
 
         $this->command?->info('Demo firm seeded. Login: admin@lexcase.test / password');
     }

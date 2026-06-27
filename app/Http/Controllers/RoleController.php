@@ -39,6 +39,7 @@ class RoleController extends Controller
     {
         $roles = Role::query()
             ->where('guard_name', 'web')
+            ->where('team_id', auth()->user()->team_id)
             ->with('permissions:id,name')
             ->orderBy('id')
             ->get()
@@ -59,6 +60,9 @@ class RoleController extends Controller
 
     public function update(Request $request, Role $role): RedirectResponse
     {
+        // A firm may only edit its own roles (teams-mode scoping).
+        abort_unless($role->team_id === $request->user()->team_id, 404);
+
         abort_if(
             $role->name === RoleType::FirmOwner->value,
             403,

@@ -6,6 +6,7 @@ use App\Enums\RoleType;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\RolePermissions;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -60,6 +62,11 @@ class RegisteredUserController extends Controller
             ]);
 
             $team->update(['owner_id' => $user->id]);
+
+            // Provision this firm's own roles, then make the signup its owner.
+            RolePermissions::ensurePermissions();
+            RolePermissions::provision($team->id);
+            app(PermissionRegistrar::class)->setPermissionsTeamId($team->id);
             $user->assignRole(RoleType::FirmOwner->value);
 
             return $user;
