@@ -15,7 +15,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDate } from '@/lib/format';
 import type { BreadcrumbItem, EnumOption } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { CalendarDays, MoreHorizontal, Plus } from 'lucide-vue-next';
+import { CalendarDays, Download, MoreHorizontal, Plus } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 interface HearingRow {
@@ -90,8 +90,9 @@ const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en', { hour: '
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="space-y-5 p-4 sm:p-6">
             <PageHeader title="Hearings" :description="`${formatDate(range.from)} – ${formatDate(range.to)}`">
-                <template v-if="can.manage" #actions>
-                    <Button @click="openSchedule"><Plus class="size-4" /> Schedule hearing</Button>
+                <template #actions>
+                    <Button variant="outline" as-child><a href="/hearings/export"><Download class="size-4" /> Export .ics</a></Button>
+                    <Button v-if="can.manage" @click="openSchedule"><Plus class="size-4" /> Schedule hearing</Button>
                 </template>
             </PageHeader>
 

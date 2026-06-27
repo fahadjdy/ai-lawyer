@@ -57,6 +57,61 @@ class HearingController extends Controller
     }
 
     /**
+     * Export the firm's hearings as an iCalendar (.ics) feed importable into
+     * Google / Outlook / Apple Calendar.
+     */
+    public function export(Request $request): \Illuminate\Http\Response
+    {
+        $this->authorize('viewAny', Hearing::class);
+
+        $hearings = Hearing::with('case:id,case_number,title')
+            ->where('scheduled_at', '>=', now()->subMonth())
+            ->orderBy('scheduled_at')
+            ->limit(1000)
+            ->get();
+
+        $lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AI Lawyer//Hearings//EN', 'CALSCALE:GREGORIAN'];
+
+        foreach ($hearings as $h) {
+            if ($h->scheduled_at === null) {
+                continue;
+            }
+            $start = $h->scheduled_at->copy()->utc();
+            $end = $h->scheduled_at->copy()->addHour()->utc();
+            $summary = ($h->case?->case_number ? $h->case->case_number.' — ' : '').($h->purpose ?: 'Hearing');
+            $desc = trim(implode(' · ', array_filter([
+                $h->case?->title,
+                $h->judge_name ? 'Judge '.$h->judge_name : null,
+                $h->court_room ? 'Room '.$h->court_room : null,
+            ])));
+
+            $lines[] = 'BEGIN:VEVENT';
+            $lines[] = 'UID:hearing-'.$h->uuid.'@ai-lawyer';
+            $lines[] = 'DTSTAMP:'.now()->utc()->format('Ymd\THis\Z');
+            $lines[] = 'DTSTART:'.$start->format('Ymd\THis\Z');
+            $lines[] = 'DTEND:'.$end->format('Ymd\THis\Z');
+            $lines[] = 'SUMMARY:'.$this->icsEscape($summary);
+            if ($desc !== '') {
+                $lines[] = 'DESCRIPTION:'.$this->icsEscape($desc);
+            }
+            $lines[] = 'STATUS:'.($h->status === HearingStatus::Held ? 'CONFIRMED' : 'TENTATIVE');
+            $lines[] = 'END:VEVENT';
+        }
+
+        $lines[] = 'END:VCALENDAR';
+
+        return response(implode("\r\n", $lines), 200, [
+            'Content-Type' => 'text/calendar; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="hearings.ics"',
+        ]);
+    }
+
+    private function icsEscape(string $value): string
+    {
+        return str_replace(['\\', "\n", ',', ';'], ['\\\\', '\\n', '\\,', '\\;'], $value);
+    }
+
+    /**
      * Notify the case's lead lawyer & assignees (except the scheduler) that a
      * hearing was added. Failures are logged & swallowed.
      */

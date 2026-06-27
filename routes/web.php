@@ -81,6 +81,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
 
     // Hearings (calendar/agenda) — scheduled & managed via modals.
     Route::get('hearings', [HearingController::class, 'index'])->name('hearings.index');
+    Route::get('hearings/export', [HearingController::class, 'export'])->name('hearings.export');
     Route::post('hearings', [HearingController::class, 'store'])->name('hearings.store');
     Route::put('hearings/{hearing}', [HearingController::class, 'update'])->name('hearings.update');
     Route::delete('hearings/{hearing}', [HearingController::class, 'destroy'])->name('hearings.destroy');
