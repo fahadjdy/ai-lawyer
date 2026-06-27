@@ -30,7 +30,7 @@ use Throwable;
 class ChatTools
 {
     /**
-     * OpenAI-style tool definitions advertised to the model.
+     * Anthropic tool definitions advertised to the model.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -45,8 +45,7 @@ class ChatTools
                 'case_number' => ['type' => 'string', 'description' => 'The exact case number, e.g. CR-2024-001.'],
             ], ['case_number']),
 
-            // `days` is declared as a string (not integer): Groq validates tool
-            // arguments against the schema strictly, and the model often emits
+            // `days` is declared as a string (not integer): the model often emits
             // numbers as strings — we coerce to int when executing.
             $this->fn('list_upcoming_hearings', 'List the firm\'s scheduled hearings within the next N days. Use for questions about the calendar / what is coming up.', [
                 'days' => ['type' => 'string', 'description' => 'How many days ahead to look, as a number. Defaults to 14.'],
@@ -339,7 +338,7 @@ class ChatTools
     }
 
     /**
-     * Build a single tool definition.
+     * Build a single Anthropic tool definition.
      *
      * @param  array<string, mixed>  $properties
      * @param  array<int, string>  $required
@@ -348,15 +347,12 @@ class ChatTools
     private function fn(string $name, string $description, array $properties, array $required): array
     {
         return [
-            'type' => 'function',
-            'function' => [
-                'name' => $name,
-                'description' => $description,
-                'parameters' => [
-                    'type' => 'object',
-                    'properties' => $properties,
-                    'required' => $required,
-                ],
+            'name' => $name,
+            'description' => $description,
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => $properties,
+                'required' => $required,
             ],
         ];
     }

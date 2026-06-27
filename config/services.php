@@ -35,15 +35,15 @@ return [
         ],
     ],
 
-    // Groq — OpenAI-compatible LLM inference, used by the AI Case Assistant
-    // (structures a case summary and suggests applicable IPC sections).
-    'groq' => [
-        'key' => env('GROQ_API_KEY'),
-        'model' => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
-        'base_url' => env('GROQ_BASE_URL', 'https://api.groq.com/openai/v1'),
+    // Anthropic (Claude) — powers the AI Case Assistant and the conversational
+    // Legal Chat Assistant. Multimodal: the chat assistant studies a case's
+    // documents & evidence (images / PDFs) when a case is attached.
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-opus-4-8'),
         // TLS CA bundle. Defaults to the bundle shipped in storage/ so HTTPS
         // verification works on Windows/Laragon (which has no system CA file).
-        'ca_bundle' => env('GROQ_CA_BUNDLE'),
+        'ca_bundle' => env('ANTHROPIC_CA_BUNDLE'),
     ],
 
 ];

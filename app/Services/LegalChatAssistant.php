@@ -5,15 +5,16 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Models\User;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
  * Conversational AI legal assistant. Holds a multi-turn chat with a firm member,
- * grounded in Indian law, via Groq (OpenAI-compatible chat completions). Unlike
+ * grounded in Indian law, via Claude (Anthropic Messages API). Unlike
  * {@see CaseAiAssistant} (which returns strict JSON), this returns free-form
  * prose so the reply reads like a chat. A conversation may be anchored to a
- * specific case, whose facts and tracking history are injected as context.
+ * specific case, whose facts, tracking history AND evidence (documents/photos/
+ * PDFs) are injected as context — Claude is multimodal, so it studies the
+ * attached files directly.
  *
  * It is agentic and grounded: it can call {@see ChatTools} to work with the
  * firm's live data (cases, hearings, clients, tasks, statutes) and is fed
@@ -28,6 +29,7 @@ class LegalChatAssistant
     private const MAX_ROUNDS = 3;
 
     public function __construct(
+        private readonly AnthropicClient $ai,
         private readonly ChatTools $tools,
         private readonly KnowledgeRetriever $retriever,
     ) {}
@@ -55,7 +57,9 @@ class LegalChatAssistant
             $citations = $retrieved['citations'];
         }
 
-        $messages = [['role' => 'system', 'content' => $this->systemPrompt($case, $ragContext)]];
+        $system = $this->systemPrompt($case, $ragContext);
+
+        $messages = [];
         foreach ($history as $turn) {
             $role = ($turn['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
             $content = trim((string) ($turn['content'] ?? ''));
@@ -64,12 +68,14 @@ class LegalChatAssistant
             }
         }
 
+        // Multimodal: when a case is attached, hand Claude the case's documents &
+        // evidence (images & PDFs) on the latest question so it studies them.
+        $this->attachEvidence($messages, is_array($case['attachments'] ?? null) ? $case['attachments'] : []);
+
         // When the question is about the firm's own data, resolve any tool calls
-        // in a NON-streamed phase first — llama is far more reliable at emitting
-        // structured tool calls when not streaming (streamed, it sometimes types
-        // the tool name as prose). The final answer is then streamed for real.
+        // in a NON-streamed phase first, then stream the final answer for real.
         if ($this->needsFirmData($latest)) {
-            $this->resolveTools($messages, $user, $emit, $citations);
+            $this->resolveTools($system, $messages, $user, $emit, $citations);
         }
 
         $full = '';
@@ -79,7 +85,7 @@ class LegalChatAssistant
         };
 
         // Stream the answer (tools, if any, are already resolved into $messages).
-        $this->streamChat($messages, [], $onDelta);
+        $this->ai->stream($system, $messages, 1600, $onDelta);
 
         return ['content' => $full, 'citations' => $this->dedupeCitations($citations)];
     }
@@ -92,11 +98,11 @@ class LegalChatAssistant
      * @param  array<int, array<string, mixed>>  $messages
      * @param  array<int, array<string, mixed>>  $citations
      */
-    private function resolveTools(array &$messages, User $user, callable $emit, array &$citations): void
+    private function resolveTools(string $system, array &$messages, User $user, callable $emit, array &$citations): void
     {
         for ($round = 0; $round < self::MAX_ROUNDS - 1; $round++) {
             try {
-                $res = $this->toolCall($messages);
+                $res = $this->ai->message($system, $messages, 1024, $this->tools->specs());
             } catch (RuntimeException) {
                 // A tool-phase hiccup (e.g. strict arg validation) must never sink
                 // the reply — fall through and let the streamed pass answer plainly.
@@ -107,29 +113,25 @@ class LegalChatAssistant
                 return; // The model chose not to use a tool; the streamed pass will answer.
             }
 
-            $messages[] = [
-                'role' => 'assistant',
-                'content' => $res['content'] !== '' ? $res['content'] : null,
-                'tool_calls' => array_map(fn (array $c): array => [
-                    'id' => $c['id'],
-                    'type' => 'function',
-                    'function' => ['name' => $c['name'], 'arguments' => $c['arguments'] ?: '{}'],
-                ], $res['tool_calls']),
-            ];
+            // Replay Claude's tool_use turn, then feed back each tool_result.
+            $assistant = [];
+            if (trim($res['content']) !== '') {
+                $assistant[] = ['type' => 'text', 'text' => $res['content']];
+            }
+            foreach ($res['tool_calls'] as $c) {
+                $assistant[] = ['type' => 'tool_use', 'id' => $c['id'], 'name' => $c['name'], 'input' => (object) ($c['input'] ?: [])];
+            }
+            $messages[] = ['role' => 'assistant', 'content' => $assistant];
 
+            $results = [];
             foreach ($res['tool_calls'] as $call) {
-                $args = json_decode($call['arguments'] ?: '{}', true);
-                $args = is_array($args) ? $args : [];
+                $args = is_array($call['input']) ? $call['input'] : [];
                 $emit('status', ['text' => $this->tools->statusLabel($call['name'], $args)]);
                 $out = $this->tools->execute($call['name'], $args, $user);
                 $citations = array_merge($citations, $out['citations'] ?? []);
-                $messages[] = [
-                    'role' => 'tool',
-                    'tool_call_id' => $call['id'],
-                    'name' => $call['name'],
-                    'content' => (string) json_encode($out['data']),
-                ];
+                $results[] = ['type' => 'tool_result', 'tool_use_id' => $call['id'], 'content' => (string) json_encode($out['data'])];
             }
+            $messages[] = ['role' => 'user', 'content' => $results];
         }
     }
 
@@ -156,55 +158,6 @@ class LegalChatAssistant
     }
 
     /**
-     * One NON-streamed tool-aware completion. Returns the message content and any
-     * structured tool calls (assembled from the standard response shape).
-     *
-     * @param  array<int, array<string, mixed>>  $messages
-     * @return array{content: string, tool_calls: array<int, array{id: string, name: string, arguments: string}>}
-     */
-    private function toolCall(array $messages): array
-    {
-        $key = (string) config('services.groq.key');
-        if ($key === '') {
-            throw new RuntimeException('AI assistant is not configured. Add GROQ_API_KEY to your .env file.');
-        }
-
-        $response = Http::withToken($key)
-            ->acceptJson()
-            ->withOptions(['verify' => $this->caBundle()])
-            ->timeout(60)
-            ->post(rtrim((string) config('services.groq.base_url'), '/').'/chat/completions', [
-                'model' => config('services.groq.model'),
-                'temperature' => 0.2,
-                'max_tokens' => 1024,
-                'tools' => $this->tools->specs(),
-                'tool_choice' => 'auto',
-                'messages' => $messages,
-            ]);
-
-        if ($response->failed()) {
-            throw new RuntimeException((string) data_get($response->json(), 'error.message', 'The AI request failed.'));
-        }
-
-        $message = (array) data_get($response->json(), 'choices.0.message', []);
-
-        $toolCalls = [];
-        foreach ((array) ($message['tool_calls'] ?? []) as $tc) {
-            $name = (string) data_get($tc, 'function.name', '');
-            if ($name === '') {
-                continue;
-            }
-            $toolCalls[] = [
-                'id' => (string) ($tc['id'] ?? 'call_'.$name),
-                'name' => $name,
-                'arguments' => (string) data_get($tc, 'function.arguments', '{}'),
-            ];
-        }
-
-        return ['content' => (string) ($message['content'] ?? ''), 'tool_calls' => $toolCalls];
-    }
-
-    /**
      * Generate the assistant's next reply given the conversation so far.
      * Non-streaming, no tools — kept as a simple fallback / for tests.
      *
@@ -213,8 +166,9 @@ class LegalChatAssistant
      */
     public function reply(array $history, ?array $case = null): string
     {
-        $messages = [['role' => 'system', 'content' => $this->systemPrompt($case)]];
+        $system = $this->systemPrompt($case);
 
+        $messages = [];
         foreach ($history as $turn) {
             $role = ($turn['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
             $content = trim((string) ($turn['content'] ?? ''));
@@ -223,38 +177,7 @@ class LegalChatAssistant
             }
         }
 
-        return $this->complete($messages, 0.4, 1200);
-    }
-
-    /**
-     * Single chat-completion call returning the assistant's text content.
-     *
-     * @param  array<int, array{role: string, content: string}>  $messages
-     */
-    private function complete(array $messages, float $temperature, int $maxTokens): string
-    {
-        $key = (string) config('services.groq.key');
-
-        if ($key === '') {
-            throw new RuntimeException('AI assistant is not configured. Add GROQ_API_KEY to your .env file.');
-        }
-
-        $response = Http::withToken($key)
-            ->acceptJson()
-            ->withOptions(['verify' => $this->caBundle()])
-            ->timeout(45)
-            ->post(rtrim((string) config('services.groq.base_url'), '/').'/chat/completions', [
-                'model' => config('services.groq.model'),
-                'temperature' => $temperature,
-                'max_tokens' => $maxTokens,
-                'messages' => $messages,
-            ]);
-
-        if ($response->failed()) {
-            throw new RuntimeException((string) data_get($response->json(), 'error.message', 'The AI request failed.'));
-        }
-
-        $content = trim((string) data_get($response->json(), 'choices.0.message.content', ''));
+        $content = trim($this->ai->message($system, $messages, 1200)['content']);
 
         if ($content === '') {
             throw new RuntimeException('The AI returned an empty response. Please try again.');
@@ -264,106 +187,67 @@ class LegalChatAssistant
     }
 
     /**
-     * One streamed chat-completion call. Forwards content deltas to {@see $onDelta}
-     * as they arrive and accumulates any tool calls (assembled across chunks).
-     * Stops early — returning finish 'aborted' — if the client disconnects.
+     * Attach the case's evidence (images & PDFs) to the latest user turn so Claude
+     * studies them directly. Each attachment is {kind, media_type, disk, path}.
+     * Other file types (video, audio, docx…) can't be fed to the model; the
+     * controller lists them by name in the case context instead.
      *
      * @param  array<int, array<string, mixed>>  $messages
-     * @param  array<int, array<string, mixed>>  $tools
-     * @return array{content: string, tool_calls: array<int, array{id: string, name: string, arguments: string}>, finish: string}
+     * @param  array<int, array{kind: string, media_type: string, disk: string, path: string}>  $attachments
      */
-    private function streamChat(array $messages, array $tools, callable $onDelta): array
+    private function attachEvidence(array &$messages, array $attachments): void
     {
-        $key = (string) config('services.groq.key');
-
-        if ($key === '') {
-            throw new RuntimeException('AI assistant is not configured. Add GROQ_API_KEY to your .env file.');
+        if ($attachments === []) {
+            return;
         }
 
-        $payload = [
-            'model' => config('services.groq.model'),
-            'temperature' => 0.4,
-            'max_tokens' => 1600,
-            'stream' => true,
-            'messages' => $messages,
-        ];
-        if ($tools !== []) {
-            $payload['tools'] = $tools;
-            $payload['tool_choice'] = 'auto';
+        // Find the latest plain-text user turn (the question) to attach files to.
+        $target = null;
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            if (($messages[$i]['role'] ?? '') === 'user' && is_string($messages[$i]['content'] ?? null)) {
+                $target = $i;
+                break;
+            }
+        }
+        if ($target === null) {
+            return;
         }
 
-        $response = Http::withToken($key)
-            ->acceptJson()
-            ->withOptions(['verify' => $this->caBundle(), 'stream' => true])
-            ->timeout(120)
-            ->post(rtrim((string) config('services.groq.base_url'), '/').'/chat/completions', $payload);
-
-        if ($response->status() >= 400) {
-            throw new RuntimeException((string) data_get($response->json(), 'error.message', 'The AI request failed.'));
-        }
-
-        $body = $response->toPsrResponse()->getBody();
-        $buffer = '';
-        $content = '';
-        $toolCalls = [];
-        $finish = 'stop';
-
-        while (! $body->eof()) {
-            if (connection_aborted()) {
-                return ['content' => $content, 'tool_calls' => array_values($toolCalls), 'finish' => 'aborted'];
+        $blocks = [];
+        $total = 0;
+        foreach ($attachments as $att) {
+            if (count($blocks) >= 12 || $total > 18_000_000) {
+                break; // bound request size (Anthropic caps requests at ~32MB).
             }
 
-            $buffer .= $body->read(2048);
-
-            while (($nl = strpos($buffer, "\n")) !== false) {
-                $line = trim(substr($buffer, 0, $nl));
-                $buffer = substr($buffer, $nl + 1);
-
-                if ($line === '' || ! str_starts_with($line, 'data:')) {
+            try {
+                if (! \Illuminate\Support\Facades\Storage::disk($att['disk'])->exists($att['path'])) {
                     continue;
                 }
+                $bytes = (string) \Illuminate\Support\Facades\Storage::disk($att['disk'])->get($att['path']);
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($bytes === '') {
+                continue;
+            }
+            $total += strlen($bytes);
+            $data = base64_encode($bytes);
 
-                $data = trim(substr($line, 5));
-                if ($data === '[DONE]') {
-                    break 2;
-                }
-
-                $json = json_decode($data, true);
-                if (! is_array($json)) {
-                    continue;
-                }
-
-                $choice = $json['choices'][0] ?? [];
-                $delta = $choice['delta'] ?? [];
-
-                if (isset($delta['content']) && is_string($delta['content']) && $delta['content'] !== '') {
-                    $content .= $delta['content'];
-                    $onDelta($delta['content']);
-                }
-
-                foreach (($delta['tool_calls'] ?? []) as $tc) {
-                    $i = $tc['index'] ?? 0;
-                    $toolCalls[$i] ??= ['id' => '', 'name' => '', 'arguments' => ''];
-                    if (! empty($tc['id'])) {
-                        $toolCalls[$i]['id'] = $tc['id'];
-                    }
-                    if (isset($tc['function']['name'])) {
-                        $toolCalls[$i]['name'] .= $tc['function']['name'];
-                    }
-                    if (isset($tc['function']['arguments'])) {
-                        $toolCalls[$i]['arguments'] .= (string) $tc['function']['arguments'];
-                    }
-                }
-
-                if (! empty($choice['finish_reason'])) {
-                    $finish = $choice['finish_reason'];
-                }
+            if ($att['kind'] === 'pdf') {
+                $blocks[] = ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => $data]];
+            } else {
+                $blocks[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $att['media_type'], 'data' => $data]];
             }
         }
 
-        ksort($toolCalls);
+        if ($blocks === []) {
+            return;
+        }
 
-        return ['content' => $content, 'tool_calls' => array_values($toolCalls), 'finish' => $finish];
+        // Files first, then the question text (Anthropic's recommended order).
+        $blocks[] = ['type' => 'text', 'text' => (string) $messages[$target]['content']];
+        $messages[$target]['content'] = $blocks;
     }
 
     /**
@@ -400,22 +284,6 @@ class LegalChatAssistant
         }
 
         return array_slice($out, 0, 12);
-    }
-
-    /**
-     * Resolve the TLS CA bundle to verify against: an explicit env path, else
-     * the bundle shipped in storage/, else fall back to the system default (true).
-     */
-    private function caBundle(): string|bool
-    {
-        $configured = config('services.groq.ca_bundle');
-        if (is_string($configured) && $configured !== '' && is_file($configured)) {
-            return $configured;
-        }
-
-        $shipped = storage_path('app/cacert.pem');
-
-        return is_file($shipped) ? $shipped : true;
     }
 
     /**
@@ -491,6 +359,15 @@ class LegalChatAssistant
         - You may call several tools. Weave the results into a natural answer; never read raw JSON
           back to the user. If a tool returns an error or nothing, say so plainly.
         - Do NOT use tools for purely general legal questions that need no firm-specific data.
+
+        Studying the case's evidence — you can SEE files:
+        - When a case is attached, its documents and evidence may be provided to you directly
+          as images and PDFs. Study them carefully and ground your answer in what you actually
+          see — text in scanned documents, the contents of photos, figures in a PDF. Refer to
+          specific exhibits by name when you rely on them.
+        - The case context lists every document and evidence item on record. Files you cannot
+          view directly (video, audio, office documents) are named there — reason from their
+          description and say plainly that you could not view the file itself.
         PROMPT;
 
         $context = trim(implode("\n\n", array_filter([$this->caseContext($case), trim($ragContext)])));
@@ -537,6 +414,14 @@ class LegalChatAssistant
                     .($secs !== '' ? ' | sections: '.$secs : '')
                     .($note !== '' ? ' | note: '.$note : '');
             }
+        }
+
+        // Inventory of the case's documents & evidence. Images and PDFs are
+        // attached for you to view directly; other files are listed by name.
+        $filesNote = trim((string) ($case['files_note'] ?? ''));
+        if ($filesNote !== '') {
+            $lines[] = '';
+            $lines[] = $filesNote;
         }
 
         return "ATTACHED CASE CONTEXT\n".implode("\n", $lines);

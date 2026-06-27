@@ -23,24 +23,24 @@ function bootOwnerForAnalyze(): User
     return $user;
 }
 
-/** Fake a Groq analyze response so tests never hit the network. */
-function fakeAnalyzeGroq(): void
+/** Fake a Claude analyze response so tests never hit the network. */
+function fakeAnalyzeClaude(): void
 {
     Http::fake([
-        'api.groq.com/*' => Http::response([
-            'choices' => [[
-                'message' => [
-                    'content' => json_encode([
-                        'summary' => 'Structured summary of the matter.',
-                        'key_facts' => ['Fact one', 'Fact two'],
-                        'ipc_sections' => [
-                            ['section' => '420', 'title' => 'Cheating', 'reason' => 'Dishonest inducement.'],
-                        ],
-                        'suggested_priority' => 'high',
-                        'disclaimer' => 'AI suggestions — not legal advice.',
-                    ]),
-                ],
+        'api.anthropic.com/*' => Http::response([
+            'content' => [[
+                'type' => 'text',
+                'text' => json_encode([
+                    'summary' => 'Structured summary of the matter.',
+                    'key_facts' => ['Fact one', 'Fact two'],
+                    'ipc_sections' => [
+                        ['section' => '420', 'title' => 'Cheating', 'reason' => 'Dishonest inducement.'],
+                    ],
+                    'suggested_priority' => 'high',
+                    'disclaimer' => 'AI suggestions — not legal advice.',
+                ]),
             ]],
+            'stop_reason' => 'end_turn',
         ], 200),
     ]);
 }
@@ -53,8 +53,8 @@ it('blocks guests from the case-bound analyze endpoint', function () {
 
 it('analyzes a saved case and caches the analysis', function () {
     $user = bootOwnerForAnalyze();
-    config(['services.groq.key' => 'test-key']);
-    fakeAnalyzeGroq();
+    config(['services.anthropic.key' => 'test-key']);
+    fakeAnalyzeClaude();
     $case = LegalCase::factory()->create([
         'team_id' => $user->team_id,
         'created_by' => $user->id,
@@ -72,7 +72,7 @@ it('analyzes a saved case and caches the analysis', function () {
 
 it('requires a sufficient description before analyzing a saved case', function () {
     $user = bootOwnerForAnalyze();
-    config(['services.groq.key' => 'test-key']);
+    config(['services.anthropic.key' => 'test-key']);
     $case = LegalCase::factory()->create([
         'team_id' => $user->team_id,
         'created_by' => $user->id,
@@ -89,7 +89,7 @@ it('forbids analyzing a case the user cannot view', function () {
     $team = Team::factory()->create();
     $user = User::factory()->create(['team_id' => $team->id]); // no cases.view permission
     test()->actingAs($user);
-    config(['services.groq.key' => 'test-key']);
+    config(['services.anthropic.key' => 'test-key']);
     $case = LegalCase::factory()->create(['team_id' => $team->id]);
 
     $this->postJson("/cases/{$case->uuid}/analyze")->assertForbidden();

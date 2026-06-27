@@ -24,25 +24,25 @@ function bootOwnerForCrossExam(): User
     return $user;
 }
 
-/** Fake a Groq cross-exam response so tests never hit the network. */
-function fakeCrossExamGroq(): void
+/** Fake a Claude cross-exam response so tests never hit the network. */
+function fakeCrossExamClaude(): void
 {
     Http::fake([
-        'api.groq.com/*' => Http::response([
-            'choices' => [[
-                'message' => [
-                    'content' => json_encode([
-                        'opponent' => [
-                            ['question' => 'Why did your client wait three weeks to file the FIR?', 'category' => 'Timeline/Delay', 'strategy' => 'Explain the client was gathering evidence.'],
-                            ['question' => 'Can you produce the original agreement?', 'category' => 'Documentary', 'strategy' => 'Keep the original ready and exhibited.'],
-                        ],
-                        'judge' => [
-                            ['question' => 'Which section grounds the cheating allegation?', 'category' => 'Legal basis', 'strategy' => 'Point to S.420 and the inducement on record.'],
-                        ],
-                        'disclaimer' => 'AI-anticipated questions for preparation only.',
-                    ]),
-                ],
+        'api.anthropic.com/*' => Http::response([
+            'content' => [[
+                'type' => 'text',
+                'text' => json_encode([
+                    'opponent' => [
+                        ['question' => 'Why did your client wait three weeks to file the FIR?', 'category' => 'Timeline/Delay', 'strategy' => 'Explain the client was gathering evidence.'],
+                        ['question' => 'Can you produce the original agreement?', 'category' => 'Documentary', 'strategy' => 'Keep the original ready and exhibited.'],
+                    ],
+                    'judge' => [
+                        ['question' => 'Which section grounds the cheating allegation?', 'category' => 'Legal basis', 'strategy' => 'Point to S.420 and the inducement on record.'],
+                    ],
+                    'disclaimer' => 'AI-anticipated questions for preparation only.',
+                ]),
             ]],
+            'stop_reason' => 'end_turn',
         ], 200),
     ]);
 }
@@ -55,8 +55,8 @@ it('blocks guests from the cross-exam endpoint', function () {
 
 it('returns anticipated opponent and judge questions', function () {
     $user = bootOwnerForCrossExam();
-    config(['services.groq.key' => 'test-key']);
-    fakeCrossExamGroq();
+    config(['services.anthropic.key' => 'test-key']);
+    fakeCrossExamClaude();
     $case = LegalCase::factory()->create([
         'team_id' => $user->team_id,
         'created_by' => $user->id,
@@ -78,7 +78,7 @@ it('forbids users who cannot view cases', function () {
     $team = Team::factory()->create();
     $user = User::factory()->create(['team_id' => $team->id]); // no cases.view permission
     test()->actingAs($user);
-    config(['services.groq.key' => 'test-key']);
+    config(['services.anthropic.key' => 'test-key']);
     $case = LegalCase::factory()->create(['team_id' => $team->id]);
 
     $this->postJson("/cases/{$case->uuid}/cross-questions")->assertForbidden();
@@ -86,7 +86,7 @@ it('forbids users who cannot view cases', function () {
 
 it('reports a clean error when the API key is missing', function () {
     $user = bootOwnerForCrossExam();
-    config(['services.groq.key' => '']);
+    config(['services.anthropic.key' => '']);
     $case = LegalCase::factory()->create([
         'team_id' => $user->team_id,
         'created_by' => $user->id,
@@ -100,8 +100,8 @@ it('reports a clean error when the API key is missing', function () {
 
 it('caches the cross-exam result and reuses one row on regenerate', function () {
     $user = bootOwnerForCrossExam();
-    config(['services.groq.key' => 'test-key']);
-    fakeCrossExamGroq();
+    config(['services.anthropic.key' => 'test-key']);
+    fakeCrossExamClaude();
     $case = LegalCase::factory()->create([
         'team_id' => $user->team_id,
         'created_by' => $user->id,
@@ -118,8 +118,8 @@ it('caches the cross-exam result and reuses one row on regenerate', function () 
 
 it('flags the stored cross-exam stale once the tracking timeline changes', function () {
     $user = bootOwnerForCrossExam();
-    config(['services.groq.key' => 'test-key']);
-    fakeCrossExamGroq();
+    config(['services.anthropic.key' => 'test-key']);
+    fakeCrossExamClaude();
     $case = LegalCase::factory()->create([
         'team_id' => $user->team_id,
         'created_by' => $user->id,

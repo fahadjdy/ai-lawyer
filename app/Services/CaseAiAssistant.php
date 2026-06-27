@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
- * AI Case Assistant. Asks Groq (OpenAI-compatible chat completions) to (a)
- * structure a case and suggest applicable IPC sections, and (b) suggest
- * sections for a single case update/title. Output is strict JSON.
+ * AI Case Assistant. Asks Claude (Anthropic Messages API) to (a) structure a
+ * case and suggest applicable IPC sections, and (b) suggest sections for a
+ * single case update/title. Output is strict JSON.
  *
  * Informational only — the prompt and UI make clear this is not legal advice.
  */
 class CaseAiAssistant
 {
+    public function __construct(private readonly AnthropicClient $ai) {}
+
     /**
      * Full analysis: structured summary + suggested IPC sections, taking the
      * case's tracking history into account when present.
@@ -25,7 +26,7 @@ class CaseAiAssistant
      */
     public function analyze(array $case): array
     {
-        $parsed = $this->chat($this->systemPrompt(), $this->userPrompt($case), 0.35, 1500);
+        $parsed = $this->chat($this->systemPrompt(), $this->userPrompt($case), 1500);
 
         return $this->normalize($parsed);
     }
@@ -47,7 +48,7 @@ class CaseAiAssistant
             ! empty($case['focus']) ? 'Current update / title: '.$case['focus'] : null,
         ]));
 
-        $parsed = $this->chat($this->sectionsSystemPrompt(), $context, 0.3, 700);
+        $parsed = $this->chat($this->sectionsSystemPrompt(), $context, 700);
 
         $out = [];
         foreach ((array) data_get($parsed, 'sections', []) as $s) {
@@ -72,44 +73,21 @@ class CaseAiAssistant
      */
     public function crossExamQuestions(array $case): array
     {
-        $parsed = $this->chat($this->crossExamSystemPrompt(), $this->crossExamUserPrompt($case), 0.5, 1800);
+        $parsed = $this->chat($this->crossExamSystemPrompt(), $this->crossExamUserPrompt($case), 1800);
 
         return $this->normalizeCrossExam($parsed);
     }
 
     /**
-     * Single chat-completion call returning the decoded JSON object content.
+     * Single Claude call returning the decoded JSON object from the text content.
      *
      * @return array<string, mixed>
      */
-    private function chat(string $system, string $user, float $temperature, int $maxTokens): array
+    private function chat(string $system, string $user, int $maxTokens): array
     {
-        $key = (string) config('services.groq.key');
+        $result = $this->ai->message($system, [['role' => 'user', 'content' => $user]], $maxTokens);
 
-        if ($key === '') {
-            throw new RuntimeException('AI assistant is not configured. Add GROQ_API_KEY to your .env file.');
-        }
-
-        $response = Http::withToken($key)
-            ->acceptJson()
-            ->withOptions(['verify' => $this->caBundle()])
-            ->timeout(45)
-            ->post(rtrim((string) config('services.groq.base_url'), '/').'/chat/completions', [
-                'model' => config('services.groq.model'),
-                'temperature' => $temperature,
-                'max_tokens' => $maxTokens,
-                'response_format' => ['type' => 'json_object'],
-                'messages' => [
-                    ['role' => 'system', 'content' => $system],
-                    ['role' => 'user', 'content' => $user],
-                ],
-            ]);
-
-        if ($response->failed()) {
-            throw new RuntimeException((string) data_get($response->json(), 'error.message', 'The AI request failed.'));
-        }
-
-        $parsed = json_decode((string) data_get($response->json(), 'choices.0.message.content', ''), true);
+        $parsed = $this->decodeJson($result['content']);
 
         if (! is_array($parsed)) {
             throw new RuntimeException('The AI returned an unexpected response. Please try again.');
@@ -119,19 +97,30 @@ class CaseAiAssistant
     }
 
     /**
-     * Resolve the TLS CA bundle to verify against: an explicit env path, else
-     * the bundle shipped in storage/, else fall back to the system default (true).
+     * Decode the model's JSON output, tolerating any stray prose by extracting
+     * the outermost {...} object if a direct decode fails.
+     *
+     * @return array<string, mixed>|null
      */
-    private function caBundle(): string|bool
+    private function decodeJson(string $text): ?array
     {
-        $configured = config('services.groq.ca_bundle');
-        if (is_string($configured) && $configured !== '' && is_file($configured)) {
-            return $configured;
+        $text = trim($text);
+
+        $parsed = json_decode($text, true);
+        if (is_array($parsed)) {
+            return $parsed;
         }
 
-        $shipped = storage_path('app/cacert.pem');
+        $start = strpos($text, '{');
+        $end = strrpos($text, '}');
+        if ($start !== false && $end !== false && $end > $start) {
+            $parsed = json_decode(substr($text, $start, $end - $start + 1), true);
+            if (is_array($parsed)) {
+                return $parsed;
+            }
+        }
 
-        return is_file($shipped) ? $shipped : true;
+        return null;
     }
 
     private function systemPrompt(): string

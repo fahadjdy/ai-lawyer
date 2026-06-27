@@ -22,25 +22,25 @@ function bootOwnerForAi(): User
     return $user;
 }
 
-/** Fake a Groq chat-completion response so tests never hit the network. */
-function fakeGroq(): void
+/** Fake a Claude (Anthropic Messages API) response so tests never hit the network. */
+function fakeClaude(): void
 {
     Http::fake([
-        'api.groq.com/*' => Http::response([
-            'choices' => [[
-                'message' => [
-                    'content' => json_encode([
-                        'summary' => 'Structured summary of the matter.',
-                        'key_facts' => ['Fact one', 'Fact two'],
-                        'ipc_sections' => [
-                            ['section' => '420', 'title' => 'Cheating', 'reason' => 'Dishonest inducement.'],
-                            ['section' => '506', 'title' => 'Criminal intimidation', 'reason' => 'Threats made.'],
-                        ],
-                        'suggested_priority' => 'high',
-                        'disclaimer' => 'AI suggestions — not legal advice.',
-                    ]),
-                ],
+        'api.anthropic.com/*' => Http::response([
+            'content' => [[
+                'type' => 'text',
+                'text' => json_encode([
+                    'summary' => 'Structured summary of the matter.',
+                    'key_facts' => ['Fact one', 'Fact two'],
+                    'ipc_sections' => [
+                        ['section' => '420', 'title' => 'Cheating', 'reason' => 'Dishonest inducement.'],
+                        ['section' => '506', 'title' => 'Criminal intimidation', 'reason' => 'Threats made.'],
+                    ],
+                    'suggested_priority' => 'high',
+                    'disclaimer' => 'AI suggestions — not legal advice.',
+                ]),
             ]],
+            'stop_reason' => 'end_turn',
         ], 200),
     ]);
 }
@@ -60,8 +60,8 @@ it('requires a sufficiently detailed description', function () {
 
 it('returns a structured summary and IPC suggestions', function () {
     bootOwnerForAi();
-    config(['services.groq.key' => 'test-key']);
-    fakeGroq();
+    config(['services.anthropic.key' => 'test-key']);
+    fakeClaude();
 
     $this->postJson('/cases/ai/analyze', [
         'title' => 'Sharma vs State',
@@ -81,7 +81,7 @@ it('forbids users who cannot author cases', function () {
     $user = User::factory()->create(['team_id' => $team->id]);
     $user->givePermissionTo('cases.view'); // view only — no create/update
     test()->actingAs($user);
-    config(['services.groq.key' => 'test-key']);
+    config(['services.anthropic.key' => 'test-key']);
 
     $this->postJson('/cases/ai/analyze', ['description' => str_repeat('detail ', 6)])
         ->assertForbidden();
@@ -89,7 +89,7 @@ it('forbids users who cannot author cases', function () {
 
 it('reports a clean error when the API key is missing', function () {
     bootOwnerForAi();
-    config(['services.groq.key' => '']);
+    config(['services.anthropic.key' => '']);
 
     $response = $this->postJson('/cases/ai/analyze', ['description' => str_repeat('detail ', 6)])
         ->assertStatus(422);
@@ -99,8 +99,8 @@ it('reports a clean error when the API key is missing', function () {
 
 it('accepts case tracking history for context-aware analysis', function () {
     bootOwnerForAi();
-    config(['services.groq.key' => 'test-key']);
-    fakeGroq();
+    config(['services.anthropic.key' => 'test-key']);
+    fakeClaude();
 
     $this->postJson('/cases/ai/analyze', [
         'description' => 'The accused cheated the complainant and forged documents.',
@@ -113,17 +113,21 @@ it('accepts case tracking history for context-aware analysis', function () {
 
 it('suggests sections for a tracking update from its title', function () {
     $user = bootOwnerForAi();
-    config(['services.groq.key' => 'test-key']);
+    config(['services.anthropic.key' => 'test-key']);
     $case = LegalCase::factory()->create(['team_id' => $user->team_id, 'created_by' => $user->id]);
 
     Http::fake([
-        'api.groq.com/*' => Http::response([
-            'choices' => [['message' => ['content' => json_encode([
-                'sections' => [
-                    ['section' => '420', 'title' => 'Cheating'],
-                    ['section' => '467', 'title' => 'Forgery'],
-                ],
-            ])]]],
+        'api.anthropic.com/*' => Http::response([
+            'content' => [[
+                'type' => 'text',
+                'text' => json_encode([
+                    'sections' => [
+                        ['section' => '420', 'title' => 'Cheating'],
+                        ['section' => '467', 'title' => 'Forgery'],
+                    ],
+                ]),
+            ]],
+            'stop_reason' => 'end_turn',
         ], 200),
     ]);
 
@@ -139,7 +143,7 @@ it('forbids section suggestions without case edit permission', function () {
     $user = User::factory()->create(['team_id' => $team->id]);
     $user->givePermissionTo('cases.view'); // view only — cannot edit
     test()->actingAs($user);
-    config(['services.groq.key' => 'test-key']);
+    config(['services.anthropic.key' => 'test-key']);
     $case = LegalCase::factory()->create(['team_id' => $team->id]);
 
     $this->postJson("/cases/{$case->uuid}/suggest-sections", ['text' => 'x'])->assertForbidden();

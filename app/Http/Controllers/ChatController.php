@@ -6,6 +6,8 @@ namespace App\Http\Controllers;
 
 use App\Models\ChatMessage;
 use App\Models\ChatSession;
+use App\Models\Document;
+use App\Models\Evidence;
 use App\Models\LegalCase;
 use App\Services\LegalChatAssistant;
 use Illuminate\Http\JsonResponse;
@@ -378,6 +380,8 @@ class ChatController extends Controller
             return null;
         }
 
+        $files = $this->caseFiles($case);
+
         return [
             'id' => $case->id,
             'title' => $case->title,
@@ -387,7 +391,79 @@ class ChatController extends Controller
             'opposing_party' => $case->opposing_party,
             'description' => $case->description,
             'history' => $case->trackingHistory(),
+            // Multimodal: images & PDFs Claude can view directly, plus a text
+            // inventory of every document & evidence item (incl. videos by name).
+            'attachments' => $files['attachments'],
+            'files_note' => $files['note'],
         ];
+    }
+
+    /**
+     * Gather the case's documents & evidence: a list of viewable attachments
+     * (images / PDFs the model can study) plus a plain-text inventory of every
+     * file on record so the assistant is aware of what exists (including videos
+     * and office files it cannot open).
+     *
+     * @return array{attachments: array<int, array{kind: string, media_type: string, disk: string, path: string}>, note: string}
+     */
+    private function caseFiles(LegalCase $case): array
+    {
+        $imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+        $attachments = [];
+        $attached = [];
+
+        $consider = function (Document $d) use (&$attachments, &$attached, $imageTypes): bool {
+            if ($d->id === null || isset($attached[$d->id]) || $d->path === null) {
+                return isset($attached[$d->id]);
+            }
+            $mime = (string) $d->mime_type;
+            if (in_array($mime, $imageTypes, true)) {
+                $kind = 'image';
+            } elseif ($mime === 'application/pdf') {
+                $kind = 'pdf';
+            } else {
+                return false;
+            }
+            $attachments[] = ['kind' => $kind, 'media_type' => $mime, 'disk' => (string) $d->disk, 'path' => (string) $d->path];
+            $attached[$d->id] = true;
+
+            return true;
+        };
+
+        $docLines = [];
+        foreach ($case->documents()->latestVersions()->get(['id', 'name', 'disk', 'path', 'mime_type', 'extension']) as $d) {
+            $viewable = $consider($d);
+            $docLines[] = '- '.$d->name.($d->extension ? '.'.$d->extension : '').' ('.($d->mime_type ?: 'file').')'.($viewable ? ' — attached for you to view' : '');
+        }
+
+        $evLines = [];
+        foreach ($case->evidence()->with('document:id,name,disk,path,mime_type,extension')->get() as $e) {
+            /** @var Evidence $e */
+            $line = '- '.($e->reference_number ? '['.$e->reference_number.'] ' : '').$e->title.' ('.$e->type->label().', '.$e->status->label().')';
+            if ($e->document) {
+                $viewable = $consider($e->document);
+                $line .= ' — file: '.$e->document->name.($viewable ? ' (attached for you to view)' : '');
+            }
+            $evLines[] = $line;
+        }
+
+        $note = '';
+        if ($docLines !== [] || $evLines !== []) {
+            $parts = ['CASE FILES ON RECORD'];
+            if ($docLines !== []) {
+                $parts[] = 'Documents:';
+                $parts = array_merge($parts, $docLines);
+            }
+            if ($evLines !== []) {
+                $parts[] = '';
+                $parts[] = 'Evidence:';
+                $parts = array_merge($parts, $evLines);
+            }
+            $note = implode("\n", $parts);
+        }
+
+        return ['attachments' => $attachments, 'note' => $note];
     }
 
     /**
