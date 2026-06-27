@@ -26,9 +26,15 @@ use Throwable;
  *
  * Each tool returns ['data' => mixed, 'citations' => array] — the data is fed
  * back to the model as the tool result, the citations surface in the UI.
+ *
+ * The analytics tools (get_statistics / get_user_caseload / compare_cases /
+ * firm_overview) expose firm-wide numbers and are therefore gated to admins
+ * (the settings.manage permission), mirroring how create_task is gated.
  */
 class ChatTools
 {
+    public function __construct(private readonly AnalyticsService $analytics) {}
+
     /**
      * Anthropic tool definitions advertised to the model.
      *
@@ -66,6 +72,27 @@ class ChatTools
                 'due_date' => ['type' => 'string', 'description' => 'Optional due date, e.g. 2026-06-10 or "next Friday".'],
                 'case_number' => ['type' => 'string', 'description' => 'Optional case number to link the task to.'],
             ], ['title']),
+
+            // --- Analytics (admin only) ---------------------------------------
+            $this->fn('get_statistics', 'Firm-wide analytics: COUNT records, optionally broken down by a dimension and narrowed by filters. Use for any "how many / total / count / kitne / breakdown / distribution / per lawyer / by status / by month / this month" question about the firm\'s data. Admin only.', [
+                'entity' => ['type' => 'string', 'enum' => ['cases', 'tasks', 'hearings', 'clients', 'users'], 'description' => 'What to count.'],
+                'group_by' => ['type' => 'string', 'description' => 'Optional dimension to break the count down by. cases: status, type, priority, lawyer, client, court, month. tasks: status, priority, assignee. hearings: status, month, judge. clients: type, city, state. users: designation, status.'],
+                'status' => ['type' => 'string', 'description' => 'Optional status filter (use the entity\'s own status values, e.g. cases: open/in_progress/closed…; tasks: todo/in_progress/review/done; hearings: scheduled/completed/adjourned/cancelled).'],
+                'type' => ['type' => 'string', 'description' => 'Optional type filter — case type (civil, criminal, family…) or client type.'],
+                'priority' => ['type' => 'string', 'description' => 'Optional priority filter for cases (low/medium/high/critical) or tasks (low/medium/high/urgent).'],
+                'lawyer' => ['type' => 'string', 'description' => 'Optional: restrict cases to this lead lawyer (name or part of it).'],
+                'period' => ['type' => 'string', 'enum' => ['today', 'this_week', 'this_month', 'last_30_days', 'this_quarter', 'this_year', 'last_year', 'all'], 'description' => 'Optional date window (cases/clients/tasks by created date, hearings by scheduled date). Defaults to all time.'],
+            ], ['entity']),
+
+            $this->fn('get_user_caseload', 'Per-user workload across the firm: how many cases each user leads and is assigned to, plus their open tasks. Use for "how many cases does <person> have" or "caseload per lawyer". Admin only.', [
+                'user' => ['type' => 'string', 'description' => 'Optional user name (or part of it) to focus on. Omit to list every team member.'],
+            ], []),
+
+            $this->fn('compare_cases', 'Compare two or more specific cases side by side — status, type, client, lead lawyer, next hearing and the counts of hearings/documents/evidence/tasks/notes. Use when the user names multiple cases to combine or compare. Admin only.', [
+                'case_numbers' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'The case numbers to compare, e.g. ["CR-2024-001", "CV-2024-014"].'],
+            ], ['case_numbers']),
+
+            $this->fn('firm_overview', 'A high-level snapshot of the whole firm: total & active cases (with their status/type mix), client count, upcoming hearings, open & overdue tasks, and team size. Use for broad "give me an overview / summary of the system" questions. Admin only.', [], []),
         ];
     }
 
@@ -85,6 +112,10 @@ class ChatTools
                 'find_clients' => $this->findClients((string) ($args['query'] ?? '')),
                 'search_legal_sections' => $this->searchSections((string) ($args['query'] ?? '')),
                 'create_task' => $this->createTask($args, $user),
+                'get_statistics' => $this->statistics($args, $user),
+                'get_user_caseload' => $this->caseload($args, $user),
+                'compare_cases' => $this->compareCases($args, $user),
+                'firm_overview' => $this->firmOverview($user),
                 default => ['data' => ['error' => "Unknown tool: {$name}"], 'citations' => []],
             };
         } catch (Throwable $e) {
@@ -106,6 +137,10 @@ class ChatTools
             'find_clients' => 'Looking up clients'.$this->forQuery($args['query'] ?? null),
             'search_legal_sections' => 'Searching the legal library'.$this->forQuery($args['query'] ?? null),
             'create_task' => 'Creating a task',
+            'get_statistics' => 'Crunching the numbers'.(isset($args['entity']) ? ' ('.$args['entity'].')' : ''),
+            'get_user_caseload' => 'Tallying caseloads',
+            'compare_cases' => 'Comparing cases',
+            'firm_overview' => 'Building a firm overview',
             default => 'Working',
         };
     }
@@ -324,6 +359,103 @@ class ChatTools
     }
 
     /**
+     * Firm-wide counts/breakdowns. Admin only.
+     *
+     * @param  array<string, mixed>  $args
+     * @return array{data: mixed, citations: array<int, array<string, mixed>>}
+     */
+    private function statistics(array $args, User $user): array
+    {
+        if (! $user->can('settings.manage')) {
+            return $this->adminOnly();
+        }
+
+        $filters = array_filter([
+            'status' => isset($args['status']) ? (string) $args['status'] : null,
+            'type' => isset($args['type']) ? (string) $args['type'] : null,
+            'priority' => isset($args['priority']) ? (string) $args['priority'] : null,
+            'lawyer' => isset($args['lawyer']) ? (string) $args['lawyer'] : null,
+            'period' => isset($args['period']) ? (string) $args['period'] : null,
+        ], static fn (?string $v): bool => $v !== null && $v !== '' && $v !== 'all');
+
+        $data = $this->analytics->aggregate(
+            (string) ($args['entity'] ?? 'cases'),
+            isset($args['group_by']) && $args['group_by'] !== '' ? (string) $args['group_by'] : null,
+            $filters,
+        );
+
+        return ['data' => $data, 'citations' => []];
+    }
+
+    /**
+     * Per-user workload. Admin only.
+     *
+     * @param  array<string, mixed>  $args
+     * @return array{data: mixed, citations: array<int, array<string, mixed>>}
+     */
+    private function caseload(array $args, User $user): array
+    {
+        if (! $user->can('settings.manage')) {
+            return $this->adminOnly();
+        }
+
+        return ['data' => $this->analytics->userCaseload(isset($args['user']) ? (string) $args['user'] : null), 'citations' => []];
+    }
+
+    /**
+     * Side-by-side case comparison. Admin only.
+     *
+     * @param  array<string, mixed>  $args
+     * @return array{data: mixed, citations: array<int, array<string, mixed>>}
+     */
+    private function compareCases(array $args, User $user): array
+    {
+        if (! $user->can('settings.manage')) {
+            return $this->adminOnly();
+        }
+
+        $numbers = $args['case_numbers'] ?? [];
+        // The model usually sends an array, but tolerate a comma-separated string.
+        if (is_string($numbers)) {
+            $numbers = preg_split('/\s*,\s*/', trim($numbers), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        }
+        $numbers = is_array($numbers) ? $numbers : [];
+
+        $data = $this->analytics->compareCases($numbers);
+
+        $citations = [];
+        if (isset($data['cases']) && is_array($data['cases'])) {
+            $found = LegalCase::whereIn('case_number', array_column($data['cases'], 'case_number'))
+                ->get(['uuid', 'case_number', 'title']);
+            $citations = $this->caseCitations($found);
+        }
+
+        return ['data' => $data, 'citations' => $citations];
+    }
+
+    /**
+     * Firm snapshot. Admin only.
+     *
+     * @return array{data: mixed, citations: array<int, array<string, mixed>>}
+     */
+    private function firmOverview(User $user): array
+    {
+        if (! $user->can('settings.manage')) {
+            return $this->adminOnly();
+        }
+
+        return ['data' => $this->analytics->overview(), 'citations' => []];
+    }
+
+    /**
+     * @return array{data: mixed, citations: array<int, array<string, mixed>>}
+     */
+    private function adminOnly(): array
+    {
+        return ['data' => ['error' => 'Only firm admins can view firm-wide analytics — you do not have the required permission.'], 'citations' => []];
+    }
+
+    /**
      * @param  Collection<int, LegalCase>  $cases
      * @return array<int, array<string, mixed>>
      */
@@ -351,7 +483,9 @@ class ChatTools
             'description' => $description,
             'input_schema' => [
                 'type' => 'object',
-                'properties' => $properties,
+                // Cast to object so an empty property set encodes as `{}` (a valid
+                // JSON-Schema object) rather than `[]` — e.g. for firm_overview.
+                'properties' => (object) $properties,
                 'required' => $required,
             ],
         ];

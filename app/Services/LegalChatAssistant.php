@@ -148,6 +148,12 @@ class LegalChatAssistant
             return true;
         }
 
+        // Analytics: counts, breakdowns, trends, caseloads, overviews, comparisons.
+        // Covers English + common Hindi/Hinglish ("kitne", "kitni", "kul", "total").
+        if (preg_match('/\b(how\s+many|how\s+much|total|count|number\s+of|kitne|kitni|kitna|kul|average|avg|mean|breakdown|distribution|statistic|statistics|stats|analytic|analytics|metric|metrics|report|overview|summary|snapshot|caseload|case\s*load|workload|per\s+(lawyer|user|month|status|type|client)|by\s+(status|type|priority|month|lawyer|court|city|client)|compare|comparison|versus|\bvs\b|combine|pie|chart|graph)\b/i', $message)) {
+            return true;
+        }
+
         // "create/add a task", explicit tool requests, or a case-number-like token.
         if (preg_match('/\b(create|add|note down)\b.*\btask\b/i', $message)) {
             return true;
@@ -366,14 +372,48 @@ class LegalChatAssistant
           retrieved reference material below (statutes are usually pre-retrieved for you).
         - create_task: ONLY when the user clearly asks to create / add / note down a task or reminder.
 
+        Firm ANALYTICS — you can answer questions about the whole system with numbers:
+        - get_statistics: count cases / tasks / hearings / clients / users, optionally grouped by a
+          dimension (status, type, priority, lawyer, client, court, month, assignee…) and filtered
+          (status, type, priority, lawyer, period). Use it for ANY "how many / total / kitne /
+          breakdown / distribution / per lawyer / by status / this month" question.
+        - get_user_caseload: how many cases a given user (or every user) leads and is assigned, plus
+          their open tasks — for "how many cases does X have" or "caseload per lawyer".
+        - compare_cases: put two or more named cases side by side — for "compare / combine CR-1 and CR-2".
+        - firm_overview: a high-level snapshot of the whole firm — for "give me an overview of the system".
+        - These analytics tools are ADMIN-ONLY. If one replies that the user lacks permission, tell
+          them plainly that firm-wide analytics are restricted to admins — do not invent numbers.
+
         Rules for tools:
-        - If the user asks about the firm's hearings, cases, clients or tasks — or explicitly says
-          "use your tools" — you MUST call the relevant tool. Do not answer such questions from memory.
+        - If the user asks about the firm's hearings, cases, clients, tasks, or any counts/breakdowns/
+          comparisons of the firm's data — or explicitly says "use your tools" — you MUST call the
+          relevant tool. Do not answer such questions from memory or guess numbers.
         - Call the tool FIRST. Do NOT write any answer text before a tool call; call it, then write
           your answer once, after the results come back.
         - You may call several tools. Weave the results into a natural answer; never read raw JSON
           back to the user. If a tool returns an error or nothing, say so plainly.
         - Do NOT use tools for purely general legal questions that need no firm-specific data.
+
+        PRESENTING DATA — after an analytics/data tool returns, pick the CLEAREST format for the answer:
+        - A single figure (e.g. a total): state it in one short, bold sentence — e.g. "You have **142**
+          cases in total."
+        - A breakdown or comparison across several rows: use a markdown TABLE.
+        - A distribution or proportion, or counts across categories / months: add a CHART. Emit it as a
+          fenced code block tagged `chart` containing JSON ONLY — nothing else inside the fence:
+
+          ```chart
+          {"type":"pie","title":"Cases by status","data":[{"label":"Open","value":12},{"label":"Closed","value":7}]}
+          ```
+
+          - "type": use "pie" or "donut" for parts of a whole (e.g. status/type mix); "bar" for
+            comparing categories (e.g. cases per lawyer) or a month-by-month trend.
+          - Use the EXACT labels and numbers from the tool result — never invent or round them away.
+            Keep to at most 12 slices/bars (the tools already cap this).
+          - You may include BOTH a one-line takeaway (and/or a small table) AND a chart. Put a brief
+            sentence before the chart so the answer still reads well without it.
+          - Reply in the user's language, but keep the JSON inside the ```chart block in English/ASCII.
+        - Always ground every figure in tool output. These are management numbers — accuracy matters more
+          than flourish, and the "not legal advice" reminder is not needed for pure data answers.
 
         Studying the case's evidence — you can SEE files:
         - When a case is attached and the question concerns its files, the case's documents and

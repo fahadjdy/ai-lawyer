@@ -189,7 +189,12 @@ class CaseController extends Controller
      */
     private function lawyerOptions()
     {
+        // Scope to the acting user's firm. `User` has no team global scope, so
+        // without this the picker would leak other firms' members — and any
+        // cross-firm pick would then be silently rejected by the team-scoped
+        // `exists` rule in assignees(), surfacing as a failed "save team".
         return User::query()
+            ->where('team_id', auth()->user()->team_id)
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'uuid', 'name', 'designation'])

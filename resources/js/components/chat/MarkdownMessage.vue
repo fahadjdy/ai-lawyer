@@ -1,14 +1,58 @@
 <script setup lang="ts">
+import ChartBlock, { type ChartSpec } from '@/components/chat/ChartBlock.vue';
 import { renderMarkdown } from '@/lib/markdown';
 import { computed } from 'vue';
 
 const props = defineProps<{ content: string }>();
-const html = computed(() => renderMarkdown(props.content));
+
+type Segment = { type: 'html'; html: string } | { type: 'chart'; chart: ChartSpec };
+
+// Matches a complete ```chart … ``` fenced block. Incomplete blocks (still
+// streaming, no closing fence) simply stay in the prose until they finish.
+const CHART_FENCE = /```[ \t]*chart[ \t]*\r?\n([\s\S]*?)```/gi;
+
+function parseChart(raw: string): ChartSpec | null {
+    try {
+        const spec = JSON.parse(raw.trim());
+        if (!spec || !['pie', 'donut', 'bar'].includes(spec.type) || !Array.isArray(spec.data)) return null;
+        const data = spec.data
+            .filter((d: unknown): d is { label: unknown; value: unknown } => !!d && typeof d === 'object')
+            .map((d: { label: unknown; value: unknown }) => ({ label: String(d.label ?? '—'), value: Number(d.value) }))
+            .filter((d: { value: number }) => Number.isFinite(d.value));
+        if (!data.length) return null;
+        return { type: spec.type, title: typeof spec.title === 'string' ? spec.title : undefined, data };
+    } catch {
+        return null;
+    }
+}
+
+const segments = computed<Segment[]>(() => {
+    const content = props.content ?? '';
+    const out: Segment[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    CHART_FENCE.lastIndex = 0;
+    while ((m = CHART_FENCE.exec(content)) !== null) {
+        const spec = parseChart(m[1]);
+        // Only peel out the block if it parses; otherwise leave it in the prose.
+        if (!spec) continue;
+        if (m.index > last) out.push({ type: 'html', html: renderMarkdown(content.slice(last, m.index)) });
+        out.push({ type: 'chart', chart: spec });
+        last = m.index + m[0].length;
+    }
+    if (last < content.length) out.push({ type: 'html', html: renderMarkdown(content.slice(last)) });
+    return out;
+});
 </script>
 
 <template>
-    <!-- eslint-disable-next-line vue/no-v-html — markdown-it runs with html:false, so output is escaped/safe -->
-    <div class="chat-prose" v-html="html" />
+    <div>
+        <template v-for="(seg, i) in segments" :key="i">
+            <!-- eslint-disable-next-line vue/no-v-html — markdown-it runs with html:false, so output is escaped/safe -->
+            <div v-if="seg.type === 'html'" class="chat-prose" v-html="seg.html" />
+            <ChartBlock v-else :spec="seg.chart" />
+        </template>
+    </div>
 </template>
 
 <style scoped>

@@ -47,7 +47,7 @@ function submit() {
         {
             preserveScroll: true,
             onSuccess: close,
-            onError: () => toasts.error('Could not update the legal team.'),
+            onError: (errors) => toasts.error(Object.values(errors)[0] ?? 'Could not update the legal team.'),
             onFinish: () => (processing.value = false),
         },
     );
