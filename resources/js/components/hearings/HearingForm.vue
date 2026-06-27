@@ -29,6 +29,8 @@ interface HearingRow {
 const props = defineProps<{
     open: boolean;
     hearing?: HearingRow | null;
+    // Pre-fill the date/time for a NEW hearing (e.g. clicking a calendar day).
+    presetDate?: string | null;
     options: { statuses: EnumOption[]; cases: { id: number; name: string }[] };
 }>();
 
@@ -60,7 +62,7 @@ watch(
         resetForm({
             values: {
                 case_id: (h?.case_id ?? null) as unknown as number,
-                scheduled_at: h?.scheduled_at ? h.scheduled_at.slice(0, 16) : '',
+                scheduled_at: h?.scheduled_at ? h.scheduled_at.slice(0, 16) : (props.presetDate ?? ''),
                 status: h?.status?.value ?? 'scheduled',
                 purpose: h?.purpose ?? '',
                 court_room: h?.court_room ?? '',
