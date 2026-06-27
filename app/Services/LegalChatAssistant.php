@@ -25,8 +25,8 @@ use RuntimeException;
  */
 class LegalChatAssistant
 {
-    /** Hard ceiling on tool-call rounds before a written answer is forced. */
-    private const MAX_ROUNDS = 3;
+    /** How many tool-using rounds to allow before tools are withdrawn to force a written answer. */
+    private const MAX_TOOL_ROUNDS = 4;
 
     public function __construct(
         private readonly AnthropicClient $ai,
@@ -74,59 +74,71 @@ class LegalChatAssistant
             $this->attachEvidence($messages, is_array($case['attachments'] ?? null) ? $case['attachments'] : []);
         }
 
-        // When the question is about the firm's own data, resolve any tool calls
-        // in a NON-streamed phase first, then stream the final answer for real.
-        if ($this->needsFirmData($latest)) {
-            $this->resolveTools($system, $messages, $user, $emit, $citations);
-        }
-
         $full = '';
         $onDelta = function (string $d) use ($emit, &$full): void {
             $full .= $d;
             $emit('delta', ['text' => $d]);
         };
 
-        // Stream the answer (tools, if any, are already resolved into $messages).
-        $this->ai->stream($system, $messages, 1600, $onDelta);
+        // Stream the reply with tools available DURING streaming, looping through
+        // any tool calls until a final written answer is produced.
+        $this->runAgentic($system, $messages, $user, $emit, $citations, $onDelta);
 
         return ['content' => $full, 'citations' => $this->dedupeCitations($citations)];
     }
 
     /**
-     * Non-streamed tool-resolution loop: let the model call tools against the
-     * firm's data, execute them, and fold the results back into $messages so the
-     * streamed answer can draw on them. Emits a status line per tool call.
+     * The streaming agentic loop. Streams the model's reply token-by-token with the
+     * full toolbox available; if the model decides to use a tool, the text so far is
+     * already on screen, a status line is emitted for the CURRENT action, the tool
+     * runs, its result is fed back, and we stream again — repeating until the model
+     * writes a final answer (or the round budget is spent, at which point tools are
+     * withdrawn to force one).
+     *
+     * Crucially, tools are available WHILE streaming (not in a separate pre-pass),
+     * so a reply that begins "let me check that case…" actually follows through with
+     * the lookup and the answer, instead of dead-ending with no response.
      *
      * @param  array<int, array<string, mixed>>  $messages
      * @param  array<int, array<string, mixed>>  $citations
      */
-    private function resolveTools(string $system, array &$messages, User $user, callable $emit, array &$citations): void
+    private function runAgentic(string $system, array &$messages, User $user, callable $emit, array &$citations, callable $onDelta): void
     {
-        for ($round = 0; $round < self::MAX_ROUNDS - 1; $round++) {
+        $tools = $this->tools->specs();
+
+        for ($round = 0; ; $round++) {
+            $offerTools = $round < self::MAX_TOOL_ROUNDS;
+
             try {
-                $res = $this->ai->message($system, $messages, 1024, $this->tools->specs());
-            } catch (RuntimeException) {
-                // A tool-phase hiccup (e.g. strict arg validation) must never sink
-                // the reply — fall through and let the streamed pass answer plainly.
+                $result = $this->ai->stream($system, $messages, 1600, $onDelta, $offerTools ? $tools : []);
+            } catch (RuntimeException $e) {
+                // A first-round failure (e.g. missing API key) has produced nothing —
+                // surface it. A later-round failure keeps whatever already streamed.
+                if ($round === 0) {
+                    throw $e;
+                }
+
                 return;
             }
 
-            if ($res['tool_calls'] === []) {
-                return; // The model chose not to use a tool; the streamed pass will answer.
+            // A final written answer, an aborted stream, or no tools left to call
+            // (budget spent) all end the loop.
+            if (! $offerTools || ($result['finish'] ?? '') !== 'tool_use' || $result['tool_calls'] === []) {
+                return;
             }
 
-            // Replay Claude's tool_use turn, then feed back each tool_result.
+            // Replay the model's tool_use turn, then feed back each tool result.
             $assistant = [];
-            if (trim($res['content']) !== '') {
-                $assistant[] = ['type' => 'text', 'text' => $res['content']];
+            if (trim($result['content']) !== '') {
+                $assistant[] = ['type' => 'text', 'text' => $result['content']];
             }
-            foreach ($res['tool_calls'] as $c) {
+            foreach ($result['tool_calls'] as $c) {
                 $assistant[] = ['type' => 'tool_use', 'id' => $c['id'], 'name' => $c['name'], 'input' => (object) ($c['input'] ?: [])];
             }
             $messages[] = ['role' => 'assistant', 'content' => $assistant];
 
             $results = [];
-            foreach ($res['tool_calls'] as $call) {
+            foreach ($result['tool_calls'] as $call) {
                 $args = is_array($call['input']) ? $call['input'] : [];
                 $emit('status', ['text' => $this->tools->statusLabel($call['name'], $args)]);
                 $out = $this->tools->execute($call['name'], $args, $user);
@@ -134,35 +146,10 @@ class LegalChatAssistant
                 $results[] = ['type' => 'tool_result', 'tool_use_id' => $call['id'], 'content' => (string) json_encode($out['data'])];
             }
             $messages[] = ['role' => 'user', 'content' => $results];
-        }
-    }
 
-    /**
-     * Heuristic: does the latest message concern the firm's own records (cases,
-     * hearings, clients, tasks) rather than a purely general legal question? Used
-     * to decide whether to run the tool-resolution phase at all.
-     */
-    private function needsFirmData(string $message): bool
-    {
-        if (preg_match('/\b(hearing|hearings|schedule|scheduled|calendar|upcoming|cause\s?list|next\s+week|this\s+week|client|clients|task|tasks|reminder|remind|to-?do|deadline|my\s+case|my\s+matter|our\s+case)\b/i', $message)) {
-            return true;
+            // Keep the progress indicator meaningful until the next text delta lands.
+            $emit('status', ['text' => 'Reviewing the results and writing your answer']);
         }
-
-        // Analytics: counts, breakdowns, trends, caseloads, overviews, comparisons.
-        // Covers English + common Hindi/Hinglish ("kitne", "kitni", "kul", "total").
-        if (preg_match('/\b(how\s+many|how\s+much|total|count|number\s+of|kitne|kitni|kitna|kul|average|avg|mean|breakdown|distribution|statistic|statistics|stats|analytic|analytics|metric|metrics|report|overview|summary|snapshot|caseload|case\s*load|workload|per\s+(lawyer|user|month|status|type|client)|by\s+(status|type|priority|month|lawyer|court|city|client)|compare|comparison|versus|\bvs\b|combine|pie|chart|graph)\b/i', $message)) {
-            return true;
-        }
-
-        // "create/add a task", explicit tool requests, or a case-number-like token.
-        if (preg_match('/\b(create|add|note down)\b.*\btask\b/i', $message)) {
-            return true;
-        }
-        if (stripos($message, 'tool') !== false) {
-            return true;
-        }
-
-        return (bool) preg_match('/\b[A-Z]{2,}[-\/ ]?\d{2,}\b/', $message);
     }
 
     /**

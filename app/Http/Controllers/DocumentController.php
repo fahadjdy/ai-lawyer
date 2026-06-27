@@ -10,6 +10,7 @@ use App\Http\Requests\Documents\UpdateDocumentRequest;
 use App\Models\Document;
 use App\Models\DocumentFolder;
 use App\Models\LegalCase;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -60,28 +61,38 @@ class DocumentController extends Controller
 
     public function store(StoreDocumentRequest $request): RedirectResponse
     {
-        /** @var UploadedFile $file */
-        $file = $request->file('file');
-        $meta = $this->storeFile($file, $request->user()->team_id);
+        /** @var array<int, UploadedFile> $files */
+        $files = $request->file('files');
 
         // Inherit the client from the linked case so documents stay client-attributable.
         $caseId = $request->integer('case_id') ?: null;
         $clientId = $caseId ? LegalCase::whereKey($caseId)->value('client_id') : null;
+        $folderId = $request->integer('folder_id') ?: null;
 
-        Document::create([
-            'case_id' => $caseId,
-            'client_id' => $clientId,
-            'folder_id' => $request->integer('folder_id') ?: null,
-            'version' => 1,
-            'is_latest' => true,
-            'name' => $request->filled('name')
-                ? $request->string('name')->value()
-                : pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
-            'uploaded_by' => $request->user()->id,
-            ...$meta,
-        ]);
+        // The display name only applies when a single file is uploaded; a
+        // multi-file upload names each document after its own file.
+        $single = count($files) === 1;
 
-        return back()->with('success', 'Document uploaded.');
+        foreach ($files as $file) {
+            $meta = $this->storeFile($file, $request->user()->team_id);
+
+            Document::create([
+                'case_id' => $caseId,
+                'client_id' => $clientId,
+                'folder_id' => $folderId,
+                'version' => 1,
+                'is_latest' => true,
+                'name' => $single && $request->filled('name')
+                    ? $request->string('name')->value()
+                    : pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
+                'uploaded_by' => $request->user()->id,
+                ...$meta,
+            ]);
+        }
+
+        $count = count($files);
+
+        return back()->with('success', $count === 1 ? 'Document uploaded.' : "{$count} documents uploaded.");
     }
 
     public function update(UpdateDocumentRequest $request, Document $document): RedirectResponse
@@ -151,6 +162,34 @@ class DocumentController extends Controller
         return $disk->response($document->path, $filename, [
             'Content-Type' => $document->mime_type ?: 'application/octet-stream',
         ]);
+    }
+
+    /**
+     * The full version history of a document (the chain keyed by its root),
+     * newest first — for the version-history panel.
+     */
+    public function versions(Document $document): JsonResponse
+    {
+        $this->authorize('view', $document);
+
+        $root = $document->parent_id ? $document->parent : $document;
+        $ids = $root->versions()->pluck('id')->push($root->id);
+
+        $versions = Document::whereIn('id', $ids)
+            ->with('uploader:id,name')
+            ->orderByDesc('version')
+            ->get()
+            ->map(fn (Document $d): array => [
+                'id' => $d->uuid,
+                'version' => $d->version,
+                'is_latest' => $d->is_latest,
+                'size' => $d->humanSize(),
+                'original_name' => $d->original_name,
+                'uploaded_by' => $d->uploader?->name,
+                'created_at' => $d->created_at?->toIso8601String(),
+            ]);
+
+        return response()->json(['versions' => $versions]);
     }
 
     public function destroy(Document $document): RedirectResponse

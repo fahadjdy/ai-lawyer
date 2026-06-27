@@ -101,6 +101,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('documents', [DocumentController::class, 'store'])->name('documents.store');
     Route::get('documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
     Route::get('documents/{document}/preview', [DocumentController::class, 'preview'])->name('documents.preview');
+    Route::get('documents/{document}/versions', [DocumentController::class, 'versions'])->name('documents.versions');
     Route::post('documents/{document}/versions', [DocumentController::class, 'storeVersion'])->name('documents.versions.store');
     Route::put('documents/{document}', [DocumentController::class, 'update'])->name('documents.update');
     Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->name('documents.destroy');

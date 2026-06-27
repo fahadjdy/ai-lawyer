@@ -131,16 +131,16 @@ class ChatTools
     public function statusLabel(string $name, array $args): string
     {
         return match ($name) {
-            'search_cases' => 'Searching cases'.$this->forQuery($args['query'] ?? null),
-            'get_case' => 'Opening case '.($args['case_number'] ?? ''),
-            'list_upcoming_hearings' => 'Checking upcoming hearings',
-            'find_clients' => 'Looking up clients'.$this->forQuery($args['query'] ?? null),
+            'search_cases' => 'Searching the firm\'s cases'.$this->forQuery($args['query'] ?? null),
+            'get_case' => 'Reading case '.trim((string) ($args['case_number'] ?? '')),
+            'list_upcoming_hearings' => 'Checking the hearing calendar',
+            'find_clients' => 'Looking up client records'.$this->forQuery($args['query'] ?? null),
             'search_legal_sections' => 'Searching the legal library'.$this->forQuery($args['query'] ?? null),
-            'create_task' => 'Creating a task',
-            'get_statistics' => 'Crunching the numbers'.(isset($args['entity']) ? ' ('.$args['entity'].')' : ''),
-            'get_user_caseload' => 'Tallying caseloads',
-            'compare_cases' => 'Comparing cases',
-            'firm_overview' => 'Building a firm overview',
+            'create_task' => 'Creating the task',
+            'get_statistics' => 'Crunching the numbers'.(isset($args['entity']) ? ' for '.$args['entity'] : ''),
+            'get_user_caseload' => 'Tallying caseloads'.(isset($args['user']) && $args['user'] !== '' ? ' for '.$args['user'] : ''),
+            'compare_cases' => 'Comparing the cases',
+            'firm_overview' => 'Building a firm-wide overview',
             default => 'Working',
         };
     }

@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToastStore } from '@/stores/toasts';
 import { useForm } from '@inertiajs/vue3';
-import { FileText, UploadCloud } from 'lucide-vue-next';
-import { ref, watch } from 'vue';
+import { FileText, UploadCloud, X } from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
 
 interface DocTarget {
     id: string;
@@ -21,10 +21,10 @@ const props = withDefaults(
         open: boolean;
         mode?: 'create' | 'version';
         target?: DocTarget | null;
-        presetFile?: File | null;
+        presetFiles?: File[] | null;
         options: { cases: { id: number; name: string }[]; folders: { id: number; uuid: string; name: string }[] };
     }>(),
-    { mode: 'create', target: null, presetFile: null },
+    { mode: 'create', target: null, presetFiles: null },
 );
 
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>();
@@ -32,8 +32,14 @@ const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>();
 const toasts = useToastStore();
 const fileInput = ref<HTMLInputElement | null>(null);
 
-const form = useForm<{ file: File | null; name: string; case_id: number | null; folder_id: number | null }>({
+// `selected` is the UI source of truth; the right field is synced onto the
+// form (single `file` for a version, `files[]` for a create) before posting.
+const selected = ref<File[]>([]);
+const multiple = computed(() => props.mode === 'create');
+
+const form = useForm<{ file: File | null; files: File[]; name: string; case_id: number | null; folder_id: number | null }>({
     file: null,
+    files: [],
     name: '',
     case_id: null,
     folder_id: null,
@@ -45,19 +51,29 @@ watch(
         if (!isOpen) return;
         form.clearErrors();
         form.reset();
-        if (props.presetFile) setFile(props.presetFile);
+        selected.value = [];
+        if (props.presetFiles?.length) setFiles(props.presetFiles);
     },
 );
 
-function setFile(file: File | null) {
-    form.file = file;
-    if (file && !form.name && props.mode === 'create') {
-        form.name = file.name.replace(/\.[^/.]+$/, '');
+function setFiles(files: File[]) {
+    selected.value = multiple.value ? files : files.slice(0, 1);
+    form.files = selected.value;
+    form.file = selected.value[0] ?? null;
+    if (props.mode === 'create' && !form.name && selected.value.length === 1) {
+        form.name = selected.value[0].name.replace(/\.[^/.]+$/, '');
     }
 }
 
 function onFileChange(e: Event) {
-    setFile((e.target as HTMLInputElement).files?.[0] ?? null);
+    setFiles(Array.from((e.target as HTMLInputElement).files ?? []));
+}
+
+function removeFile(index: number) {
+    const next = selected.value.slice();
+    next.splice(index, 1);
+    setFiles(next);
+    if (fileInput.value) fileInput.value.value = '';
 }
 
 const close = () => emit('update:open', false);
@@ -71,9 +87,10 @@ function submit() {
     };
 
     if (props.mode === 'version' && props.target) {
-        form.post(`/documents/${props.target.id}/versions`, opts);
+        // Versions take a single `file`; drop the unused array so we don't upload twice.
+        form.transform(({ files, ...rest }) => rest).post(`/documents/${props.target.id}/versions`, opts);
     } else {
-        form.post('/documents', opts);
+        form.transform(({ file, ...rest }) => rest).post('/documents', opts);
     }
 }
 </script>
@@ -84,33 +101,45 @@ function submit() {
             <DialogHeader>
                 <DialogTitle>{{ mode === 'version' ? 'Upload new version' : 'Upload document' }}</DialogTitle>
                 <DialogDescription>
-                    {{ mode === 'version' ? `A new version of “${target?.name}” (currently v${target?.version}).` : 'Add a file to your secure repository.' }}
+                    {{ mode === 'version' ? `A new version of “${target?.name}” (currently v${target?.version}).` : 'Add one or more files to your secure repository.' }}
                 </DialogDescription>
             </DialogHeader>
 
             <form class="space-y-4" @submit.prevent="submit">
                 <!-- File picker / drop target -->
                 <div>
-                    <input ref="fileInput" type="file" class="hidden" @change="onFileChange" />
+                    <input ref="fileInput" type="file" class="hidden" :multiple="multiple" @change="onFileChange" />
                     <button
                         type="button"
                         class="flex w-full items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-left text-sm text-slate-500 transition hover:border-indigo-300 hover:bg-indigo-50/40"
                         @click="fileInput?.click()"
                     >
-                        <component :is="form.file ? FileText : UploadCloud" class="size-5 shrink-0 text-slate-400" />
-                        <span v-if="form.file" class="min-w-0 truncate font-medium text-slate-700">{{ form.file.name }}</span>
-                        <span v-else>Click to browse — PDF, DOCX, images, audio &amp; video (max 50&nbsp;MB).</span>
+                        <UploadCloud class="size-5 shrink-0 text-slate-400" />
+                        <span v-if="selected.length === 0">Click to browse — PDF, DOCX, images, audio &amp; video (max 50&nbsp;MB{{ multiple ? ' each, up to 20 files' : '' }}).</span>
+                        <span v-else-if="selected.length === 1" class="min-w-0 truncate font-medium text-slate-700">{{ selected[0].name }}</span>
+                        <span v-else class="font-medium text-slate-700">{{ selected.length }} files selected — click to change</span>
                     </button>
-                    <InputError :message="form.errors.file" />
+
+                    <!-- Selected file list (multi-upload) -->
+                    <ul v-if="selected.length > 1" class="mt-2 space-y-1">
+                        <li v-for="(f, i) in selected" :key="f.name + i" class="flex items-center gap-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
+                            <FileText class="size-3.5 shrink-0 text-slate-400" />
+                            <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
+                            <button type="button" class="text-slate-400 hover:text-rose-600" aria-label="Remove file" @click="removeFile(i)"><X class="size-3.5" /></button>
+                        </li>
+                    </ul>
+
+                    <InputError :message="form.errors.files || form.errors.file || form.errors['files.0' as keyof typeof form.errors]" />
                     <p v-if="form.progress" class="mt-1.5 text-xs text-slate-400">Uploading… {{ Math.round(form.progress.percentage ?? 0) }}%</p>
                 </div>
 
                 <template v-if="mode === 'create'">
-                    <div>
+                    <div v-if="selected.length <= 1">
                         <Label for="d_name">Display name</Label>
                         <Input id="d_name" v-model="form.name" placeholder="Defaults to the file name" />
                         <InputError :message="form.errors.name" />
                     </div>
+                    <p v-else class="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">Each file becomes its own document, named after the file.</p>
 
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
@@ -140,8 +169,8 @@ function submit() {
 
                 <div class="flex items-center justify-end gap-3 pt-2">
                     <Button variant="outline" type="button" @click="close">Cancel</Button>
-                    <Button type="submit" :disabled="form.processing || !form.file">
-                        {{ mode === 'version' ? 'Upload version' : 'Upload' }}
+                    <Button type="submit" :disabled="form.processing || selected.length === 0">
+                        {{ mode === 'version' ? 'Upload version' : selected.length > 1 ? `Upload ${selected.length} files` : 'Upload' }}
                     </Button>
                 </div>
             </form>

@@ -505,14 +505,19 @@ function confirmDelete() {
                                         >
                                             <template v-if="m.role === 'assistant'">
                                                 <MarkdownMessage v-if="m.content" :content="m.content" />
-                                                <!-- Live status / typing indicator -->
+                                                <!-- Live progress: current action + indeterminate bar -->
                                                 <div
                                                     v-if="m.streaming && (m.status || !m.content)"
-                                                    class="flex items-center gap-2 text-xs text-slate-500"
-                                                    :class="m.content ? 'mt-2' : ''"
+                                                    class="ai-progress"
+                                                    :class="m.content ? 'mt-3' : ''"
                                                 >
-                                                    <Loader2 class="size-3.5 animate-spin" />
-                                                    <span>{{ m.status || 'Thinking…' }}</span>
+                                                    <div class="flex items-center gap-2 text-xs font-medium text-indigo-700">
+                                                        <Loader2 class="size-3.5 shrink-0 animate-spin" />
+                                                        <span class="line-clamp-1">{{ m.status || 'Thinking…' }}</span>
+                                                    </div>
+                                                    <div class="ai-progress-track">
+                                                        <div class="ai-progress-bar" />
+                                                    </div>
                                                 </div>
                                             </template>
                                             <template v-else>{{ m.content }}</template>
@@ -664,3 +669,40 @@ function confirmDelete() {
         />
     </AppLayout>
 </template>
+
+<style scoped>
+/* Indeterminate progress bar shown while the assistant is working (retrieving,
+   running a tool, or composing) — a moving sliver sweeping left to right. */
+.ai-progress-track {
+    position: relative;
+    height: 3px;
+    width: 100%;
+    max-width: 18rem;
+    margin-top: 0.4rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: #e0e7ff;
+}
+.ai-progress-bar {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: 40%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, #a5b4fc, #6366f1);
+    animation: ai-indeterminate 1.2s ease-in-out infinite;
+}
+@keyframes ai-indeterminate {
+    0% {
+        left: -40%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ai-progress-bar {
+        animation-duration: 2.4s;
+    }
+}
+</style>
