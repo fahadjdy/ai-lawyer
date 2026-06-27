@@ -76,6 +76,13 @@ function removeFile(index: number) {
     if (fileInput.value) fileInput.value.value = '';
 }
 
+// Surface whichever validation key the server used: `files` (array rule),
+// `file` (version mode), or the first per-file error `files.0`.
+const fileError = computed(() => {
+    const e = form.errors as Record<string, string>;
+    return e.files || e.file || e['files.0'] || Object.entries(e).find(([k]) => k.startsWith('files.'))?.[1];
+});
+
 const close = () => emit('update:open', false);
 
 function submit() {
@@ -129,7 +136,7 @@ function submit() {
                         </li>
                     </ul>
 
-                    <InputError :message="form.errors.files || form.errors.file || form.errors['files.0' as keyof typeof form.errors]" />
+                    <InputError :message="fileError" />
                     <p v-if="form.progress" class="mt-1.5 text-xs text-slate-400">Uploading… {{ Math.round(form.progress.percentage ?? 0) }}%</p>
                 </div>
 

@@ -6,6 +6,7 @@ import Pagination from '@/components/common/Pagination.vue';
 import SearchableSelect from '@/components/common/SearchableSelect.vue';
 import DocumentEditDialog from '@/components/documents/DocumentEditDialog.vue';
 import DocumentUploadDialog from '@/components/documents/DocumentUploadDialog.vue';
+import DocumentVersionsDialog from '@/components/documents/DocumentVersionsDialog.vue';
 import NewFolderDialog from '@/components/documents/NewFolderDialog.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,7 +23,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDate } from '@/lib/format';
 import type { BreadcrumbItem, Paginated } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Download, Eye, FileText, FolderPlus, MoreHorizontal, Search, UploadCloud } from 'lucide-vue-next';
+import { Download, Eye, FileText, FolderPlus, History, MoreHorizontal, Search, UploadCloud } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 interface DocRow {
@@ -65,30 +66,38 @@ const folderFilterOptions = computed(() => [
 const uploadOpen = ref(false);
 const uploadMode = ref<'create' | 'version'>('create');
 const versionTarget = ref<DocRow | null>(null);
-const presetFile = ref<File | null>(null);
+const presetFiles = ref<File[]>([]);
 const dragging = ref(false);
 
 function openUpload() {
     uploadMode.value = 'create';
     versionTarget.value = null;
-    presetFile.value = null;
+    presetFiles.value = [];
     uploadOpen.value = true;
 }
 function openVersion(row: DocRow) {
     uploadMode.value = 'version';
     versionTarget.value = row;
-    presetFile.value = null;
+    presetFiles.value = [];
     uploadOpen.value = true;
 }
 function onDrop(e: DragEvent) {
     dragging.value = false;
     if (!canManage.value) return;
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
     uploadMode.value = 'create';
     versionTarget.value = null;
-    presetFile.value = file;
+    presetFiles.value = files;
     uploadOpen.value = true;
+}
+
+// ---- Version history ----
+const versionsOpen = ref(false);
+const versionsTarget = ref<DocRow | null>(null);
+function openVersions(row: DocRow) {
+    versionsTarget.value = row;
+    versionsOpen.value = true;
 }
 
 function downloadDoc(row: DocRow) {
@@ -209,6 +218,7 @@ const columns: Column[] = [
                             <DropdownMenuContent align="end" class="w-44">
                                 <DropdownMenuItem @select="previewDoc(row)"><Eye class="size-4" /> Preview</DropdownMenuItem>
                                 <DropdownMenuItem @select="downloadDoc(row)"><Download class="size-4" /> Download</DropdownMenuItem>
+                                <DropdownMenuItem v-if="row.versions_count > 0" @select="openVersions(row)"><History class="size-4" /> Version history</DropdownMenuItem>
                                 <template v-if="canManage">
                                     <DropdownMenuItem @select="openVersion(row)">Upload new version</DropdownMenuItem>
                                     <DropdownMenuItem @select="openEdit(row)">Rename / move</DropdownMenuItem>
@@ -231,9 +241,10 @@ const columns: Column[] = [
             v-model:open="uploadOpen"
             :mode="uploadMode"
             :target="versionTarget"
-            :preset-file="presetFile"
+            :preset-files="presetFiles"
             :options="dialogOptions"
         />
+        <DocumentVersionsDialog v-model:open="versionsOpen" :target="versionsTarget" />
         <DocumentEditDialog v-model:open="editOpen" :document="editing" :options="dialogOptions" />
         <NewFolderDialog v-model:open="folderOpen" :options="{ cases: options.cases }" />
 
