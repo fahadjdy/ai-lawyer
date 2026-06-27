@@ -12,6 +12,7 @@ const { can } = usePermissions();
 const sidebarNavItems = computed<NavItem[]>(() => [
     { title: 'Profile', href: '/settings/profile' },
     { title: 'Password', href: '/settings/password' },
+    { title: 'Sessions', href: '/settings/sessions' },
     { title: 'Notifications', href: '/settings/notifications' },
     ...(can('settings.manage') ? [{ title: 'Firm', href: '/settings/firm' }] : []),
     { title: 'Appearance', href: '/settings/appearance' },

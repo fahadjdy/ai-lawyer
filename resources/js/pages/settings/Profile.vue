@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { TransitionRoot } from '@headlessui/vue';
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { ref } from 'vue';
 
 import DeleteUser from '@/components/DeleteUser.vue';
 import HeadingSmall from '@/components/HeadingSmall.vue';
@@ -40,6 +41,21 @@ const submit = () => {
         preserveScroll: true,
     });
 };
+
+// ---- Profile photo ----
+const avatarInput = ref<HTMLInputElement | null>(null);
+const avatarForm = useForm<{ avatar: File | null }>({ avatar: null });
+
+function onAvatarChange(e: Event) {
+    const file = (e.target as HTMLInputElement).files?.[0] ?? null;
+    if (!file) return;
+    avatarForm.avatar = file;
+    avatarForm.post(route('profile.avatar.update'), { preserveScroll: true, forceFormData: true, onFinish: () => avatarForm.reset() });
+}
+
+function removeAvatar() {
+    router.delete(route('profile.avatar.destroy'), { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -47,6 +63,21 @@ const submit = () => {
         <Head title="Profile settings" />
 
         <SettingsLayout>
+            <div class="mb-8 flex items-center gap-4">
+                <span v-if="user.avatar_url" class="size-16 overflow-hidden rounded-full bg-slate-100">
+                    <img :src="user.avatar_url" alt="" class="size-full object-cover" />
+                </span>
+                <span v-else class="flex size-16 items-center justify-center rounded-full bg-indigo-100 text-lg font-semibold text-indigo-700">{{ user.initials }}</span>
+                <div class="space-y-1.5">
+                    <input ref="avatarInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="onAvatarChange" />
+                    <div class="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" :disabled="avatarForm.processing" @click="avatarInput?.click()">Change photo</Button>
+                        <Button v-if="user.avatar_url" type="button" variant="outline" size="sm" class="text-rose-600 hover:text-rose-700" @click="removeAvatar">Remove</Button>
+                    </div>
+                    <p class="text-xs text-slate-400">JPG, PNG or WebP, up to 4&nbsp;MB.</p>
+                </div>
+            </div>
+
             <div class="flex flex-col space-y-6">
                 <HeadingSmall title="Profile information" description="Update your name and email address" />
 
