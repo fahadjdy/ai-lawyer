@@ -56,6 +56,7 @@ const props = defineProps<{
     recentActivity: Array<{ id: number; event: string | null; subject: string; causer: string | null; when: string | null }>;
     upcomingHearings: { data: any[] };
     myTasks: { data: any[] };
+    deadlines: Array<{ type: 'task' | 'hearing'; title: string; when: string | null; overdue: boolean; href: string; sub: string }>;
     recentCases: any[];
 }>();
 
@@ -276,6 +277,31 @@ function activityTone(event: string | null): string {
                     <EmptyState v-else title="No activity" description="Actions will show up here." :icon="Activity" class="!py-8" />
                 </DashboardCard>
             </div>
+
+            <!-- Deadlines / reminders -->
+            <DashboardCard title="Deadlines" subtitle="Due in the next 7 days" :icon="CalendarClock" accent="rose" :delay="80">
+                <ul v-if="deadlines.length" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <li v-for="(d, i) in deadlines" :key="i">
+                        <Link :href="d.href" class="flex items-center gap-3 rounded-xl border border-slate-100 p-2.5 transition hover:border-indigo-200 hover:bg-slate-50">
+                            <span
+                                class="flex size-9 shrink-0 items-center justify-center rounded-lg"
+                                :class="d.overdue ? 'bg-rose-50 text-rose-600' : d.type === 'hearing' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600'"
+                            >
+                                <component :is="d.type === 'hearing' ? Gavel : ListTodo" class="size-4" />
+                            </span>
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm font-medium text-slate-800">{{ d.title }}</p>
+                                <p class="truncate text-xs text-slate-500">{{ d.sub }}</p>
+                            </div>
+                            <div class="shrink-0 text-right">
+                                <p class="text-xs font-medium" :class="d.overdue ? 'text-rose-600' : 'text-slate-600'">{{ d.overdue ? 'Overdue' : relativeDate(d.when) }}</p>
+                                <p class="text-[10px] text-slate-400">{{ formatDate(d.when, true) }}</p>
+                            </div>
+                        </Link>
+                    </li>
+                </ul>
+                <EmptyState v-else title="Nothing due" description="No deadlines in the next 7 days." :icon="CheckCircle2" class="!py-8" />
+            </DashboardCard>
 
             <!-- Recent cases -->
             <DashboardCard title="Recent cases" subtitle="Most recently updated matters" :icon="Briefcase" accent="indigo" to="/cases" :delay="80">

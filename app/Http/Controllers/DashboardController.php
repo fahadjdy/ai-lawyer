@@ -36,6 +36,7 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard', array_merge($analytics, [
             'userName' => explode(' ', (string) auth()->user()->name)[0],
+            'deadlines' => $this->deadlines(),
             'recentActivity' => $this->recentActivity($teamId),
             'upcomingHearings' => HearingResource::collection(
                 Hearing::with('case:id,uuid,case_number,title,status')->upcoming()->limit(6)->get(),
@@ -62,6 +63,54 @@ class DashboardController extends Controller
                     'updated_at' => $c->updated_at?->toIso8601String(),
                 ]),
         ]));
+    }
+
+    /**
+     * A single chronological feed of what's due in the next 7 days — overdue &
+     * upcoming tasks merged with scheduled hearings — powering the reminders
+     * widget. Team-scoped through the models' global scopes.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function deadlines(): array
+    {
+        $horizon = now()->addDays(7);
+
+        $tasks = Task::with('case:id,uuid,case_number')
+            ->where('status', '!=', 'done')
+            ->whereNotNull('due_at')
+            ->where('due_at', '<=', $horizon)
+            ->orderBy('due_at')
+            ->limit(12)
+            ->get()
+            ->map(fn (Task $t): array => [
+                'type' => 'task',
+                'title' => $t->title,
+                'when' => $t->due_at?->toIso8601String(),
+                'overdue' => $t->isOverdue(),
+                'href' => "/tasks/{$t->uuid}",
+                'sub' => $t->case?->case_number ?? 'General task',
+            ]);
+
+        $hearings = Hearing::with('case:id,uuid,case_number,title')
+            ->whereBetween('scheduled_at', [now()->startOfDay(), $horizon])
+            ->orderBy('scheduled_at')
+            ->limit(12)
+            ->get()
+            ->map(fn (Hearing $h): array => [
+                'type' => 'hearing',
+                'title' => $h->case?->title ?? ($h->purpose ?: 'Hearing'),
+                'when' => $h->scheduled_at?->toIso8601String(),
+                'overdue' => false,
+                'href' => $h->case ? "/cases/{$h->case->uuid}" : '/hearings',
+                'sub' => $h->purpose ?: 'Hearing',
+            ]);
+
+        return $tasks->concat($hearings)
+            ->sortBy('when')
+            ->take(8)
+            ->values()
+            ->all();
     }
 
     /**
