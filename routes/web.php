@@ -25,6 +25,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TemplateController;
+use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -119,10 +120,6 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::middleware('can:settings.manage')->group(function (): void {
         Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
         Route::put('roles/{role}', [RoleController::class, 'update'])->name('roles.update');
-
-        // Deploy helper — run pending migrations + clear caches from the browser
-        // (FTP-only host has no SSH/artisan). Admin-only; returns plain-text log.
-        Route::get('deploy/migrate', [DeployController::class, 'migrate'])->name('deploy.migrate');
     });
 
     Route::get('activity', [ActivityLogController::class, 'index'])->middleware('can:audit.view')->name('activity.index');
@@ -162,6 +159,15 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::put('notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::put('notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
 });
+
+// Deploy helper — run pending migrations + clear caches from the browser
+// (FTP-only host, no SSH/artisan). Login-gated only: it deliberately skips the
+// Inertia share + permission gate, since those query RBAC columns that a pending
+// migration may not have added yet (otherwise the route could never self-heal).
+Route::get('deploy/migrate', [DeployController::class, 'migrate'])
+    ->middleware('auth')
+    ->withoutMiddleware(HandleInertiaRequests::class)
+    ->name('deploy.migrate');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
