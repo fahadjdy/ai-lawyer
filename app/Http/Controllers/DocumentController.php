@@ -64,8 +64,13 @@ class DocumentController extends Controller
         $file = $request->file('file');
         $meta = $this->storeFile($file, $request->user()->team_id);
 
+        // Inherit the client from the linked case so documents stay client-attributable.
+        $caseId = $request->integer('case_id') ?: null;
+        $clientId = $caseId ? LegalCase::whereKey($caseId)->value('client_id') : null;
+
         Document::create([
-            'case_id' => $request->integer('case_id') ?: null,
+            'case_id' => $caseId,
+            'client_id' => $clientId,
             'folder_id' => $request->integer('folder_id') ?: null,
             'version' => 1,
             'is_latest' => true,

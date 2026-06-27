@@ -2,6 +2,7 @@
 import CaseAiAssistant from '@/components/cases/CaseAiAssistant.vue';
 import CaseCrossExam from '@/components/cases/CaseCrossExam.vue';
 import CaseEventForm from '@/components/cases/CaseEventForm.vue';
+import CaseNotes from '@/components/cases/CaseNotes.vue';
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 import EmptyState from '@/components/common/EmptyState.vue';
 import StatTile from '@/components/common/StatTile.vue';
@@ -389,6 +390,9 @@ function confirmDeleteEvent() {
                         </ul>
                         <EmptyState v-else :icon="ListChecks" title="No tasks" description="No tasks for this case." />
                     </DashboardCard>
+
+                    <!-- Notes -->
+                    <CaseNotes :case-id="c.id" :notes="c.notes ?? []" :can-manage="can('cases.update')" />
                 </div>
 
                 <!-- ===== Sidebar ===== -->

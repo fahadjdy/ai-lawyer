@@ -8,6 +8,7 @@ use App\Http\Controllers\Cases\CaseAnalyzeController;
 use App\Http\Controllers\Cases\CaseController;
 use App\Http\Controllers\Cases\CaseCrossExamController;
 use App\Http\Controllers\Cases\CaseEventController;
+use App\Http\Controllers\Cases\CaseNoteController;
 use App\Http\Controllers\Cases\SuggestSectionsController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClientController;
@@ -55,6 +56,11 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('cases/{case}/events', [CaseEventController::class, 'store'])->name('cases.events.store');
     Route::put('cases/{case}/events/{event}', [CaseEventController::class, 'update'])->name('cases.events.update');
     Route::delete('cases/{case}/events/{event}', [CaseEventController::class, 'destroy'])->name('cases.events.destroy');
+
+    // Case notes — pinned & timestamped annotations on a matter.
+    Route::post('cases/{case}/notes', [CaseNoteController::class, 'store'])->name('cases.notes.store');
+    Route::put('cases/{case}/notes/{note}', [CaseNoteController::class, 'update'])->name('cases.notes.update');
+    Route::delete('cases/{case}/notes/{note}', [CaseNoteController::class, 'destroy'])->name('cases.notes.destroy');
 
     Route::resource('cases', CaseController::class)->parameters(['cases' => 'case']);
 
