@@ -22,7 +22,9 @@ use App\Http\Controllers\LegalNotebookController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\TaskCommentController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\TaskItemController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TemplateController;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -95,6 +97,13 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('tasks/{task}', [TaskController::class, 'show'])->name('tasks.show');
     Route::put('tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::delete('tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
+
+    // Task checklist (subtasks) & discussion comments.
+    Route::post('tasks/{task}/items', [TaskItemController::class, 'store'])->name('tasks.items.store');
+    Route::put('tasks/{task}/items/{item}', [TaskItemController::class, 'update'])->name('tasks.items.update');
+    Route::delete('tasks/{task}/items/{item}', [TaskItemController::class, 'destroy'])->name('tasks.items.destroy');
+    Route::post('tasks/{task}/comments', [TaskCommentController::class, 'store'])->name('tasks.comments.store');
+    Route::delete('tasks/{task}/comments/{comment}', [TaskCommentController::class, 'destroy'])->name('tasks.comments.destroy');
 
     // Documents — secure repository with folders, downloads & versioning.
     Route::get('documents', [DocumentController::class, 'index'])->name('documents.index');

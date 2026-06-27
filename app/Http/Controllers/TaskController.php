@@ -56,7 +56,10 @@ class TaskController extends Controller
     {
         $this->authorize('view', $task);
 
-        $task->load(['case:id,uuid,case_number,title', 'assignee:id,uuid,name', 'creator:id,uuid,name']);
+        $task->load(['case:id,uuid,case_number,title', 'assignee:id,uuid,name', 'creator:id,uuid,name', 'items', 'comments.author:id,uuid,name']);
+
+        $canManage = auth()->user()->can('update', $task);
+        $meId = auth()->id();
 
         /** @var Collection<int, Activity> $activities */
         $activities = $task->activities()->with('causer:id,uuid,name')->latest()->get();
@@ -99,8 +102,21 @@ class TaskController extends Controller
                 'created_at' => $a->created_at?->toIso8601String(),
                 'changes' => $a->event === 'updated' ? $this->describeChanges($a, $users, $cases) : [],
             ]),
+            'checklist' => $task->items->map(fn ($i) => [
+                'id' => $i->uuid,
+                'title' => $i->title,
+                'is_done' => $i->is_done,
+            ]),
+            'comments' => $task->comments->map(fn ($c) => [
+                'id' => $c->uuid,
+                'body' => $c->body,
+                'author' => $c->author?->name,
+                'author_initials' => $c->author?->initials(),
+                'created_at' => $c->created_at?->toIso8601String(),
+                'can_delete' => $canManage || $c->user_id === $meId,
+            ]),
             'options' => $this->formOptions(),
-            'can' => ['manage' => auth()->user()->can('update', $task)],
+            'can' => ['manage' => $canManage],
         ]);
     }
 

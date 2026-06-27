@@ -9,7 +9,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDate, relativeDate } from '@/lib/format';
 import type { BreadcrumbItem, EnumOption } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ArrowRight, History, Pencil, Plus, Trash2 } from 'lucide-vue-next';
+import { ArrowRight, CheckSquare, History, MessageSquare, Pencil, Plus, Send, Trash2, X } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 interface TaskData {
@@ -43,9 +43,25 @@ interface TimelineEntry {
     changes: Change[];
 }
 
+interface ChecklistItem {
+    id: string;
+    title: string;
+    is_done: boolean;
+}
+interface CommentEntry {
+    id: string;
+    body: string;
+    author: string | null;
+    author_initials: string | null;
+    created_at: string | null;
+    can_delete: boolean;
+}
+
 const props = defineProps<{
     task: TaskData;
     timeline: TimelineEntry[];
+    checklist: ChecklistItem[];
+    comments: CommentEntry[];
     options: {
         statuses: EnumOption[];
         priorities: EnumOption[];
@@ -65,6 +81,36 @@ const editOpen = ref(false);
 const confirmOpen = ref(false);
 function confirmDelete() {
     router.delete(`/tasks/${props.task.id}`, { onFinish: () => (confirmOpen.value = false) });
+}
+
+// ---- Checklist (subtasks) ----
+const newItem = ref('');
+const checklistProgress = computed(() => {
+    const total = props.checklist.length;
+    const done = props.checklist.filter((i) => i.is_done).length;
+    return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
+});
+function addItem() {
+    const title = newItem.value.trim();
+    if (!title) return;
+    router.post(`/tasks/${props.task.id}/items`, { title }, { preserveScroll: true, onSuccess: () => (newItem.value = '') });
+}
+function toggleItem(item: ChecklistItem) {
+    router.put(`/tasks/${props.task.id}/items/${item.id}`, { is_done: !item.is_done }, { preserveScroll: true });
+}
+function deleteItem(item: ChecklistItem) {
+    router.delete(`/tasks/${props.task.id}/items/${item.id}`, { preserveScroll: true });
+}
+
+// ---- Comments ----
+const newComment = ref('');
+function addComment() {
+    const body = newComment.value.trim();
+    if (!body) return;
+    router.post(`/tasks/${props.task.id}/comments`, { body }, { preserveScroll: true, onSuccess: () => (newComment.value = '') });
+}
+function deleteComment(comment: CommentEntry) {
+    router.delete(`/tasks/${props.task.id}/comments/${comment.id}`, { preserveScroll: true });
 }
 
 // Friendly one-liner for each timeline entry.
@@ -149,10 +195,88 @@ const eventDot: Record<string, string> = {
                         <h2 class="mb-2 text-sm font-semibold text-slate-900">Description</h2>
                         <p class="whitespace-pre-line text-sm text-slate-600">{{ task.description }}</p>
                     </div>
+
+                    <!-- Checklist (subtasks) -->
+                    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <h2 class="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                            <CheckSquare class="size-4 text-slate-400" /> Checklist
+                            <span v-if="checklistProgress.total" class="ml-auto text-xs font-normal text-slate-400">{{ checklistProgress.done }}/{{ checklistProgress.total }}</span>
+                        </h2>
+
+                        <div v-if="checklistProgress.total" class="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                            <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: checklistProgress.pct + '%' }" />
+                        </div>
+
+                        <ul class="space-y-1">
+                            <li v-for="item in checklist" :key="item.id" class="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50">
+                                <input
+                                    type="checkbox"
+                                    :checked="item.is_done"
+                                    :disabled="!can.manage"
+                                    class="size-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400 disabled:opacity-60"
+                                    @change="toggleItem(item)"
+                                />
+                                <span class="min-w-0 flex-1 truncate text-sm" :class="item.is_done ? 'text-slate-400 line-through' : 'text-slate-700'">{{ item.title }}</span>
+                                <button v-if="can.manage" type="button" class="text-slate-300 opacity-0 transition hover:text-rose-600 group-hover:opacity-100" aria-label="Remove item" @click="deleteItem(item)">
+                                    <X class="size-3.5" />
+                                </button>
+                            </li>
+                        </ul>
+
+                        <p v-if="checklistProgress.total === 0" class="py-1 text-sm text-slate-400">No subtasks yet.</p>
+
+                        <form v-if="can.manage" class="mt-2 flex items-center gap-2" @submit.prevent="addItem">
+                            <input
+                                v-model="newItem"
+                                type="text"
+                                placeholder="Add a subtask…"
+                                maxlength="255"
+                                class="h-8 flex-1 rounded-md border border-slate-200 px-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                            />
+                            <Button type="submit" size="sm" variant="outline" :disabled="!newItem.trim()"><Plus class="size-3.5" /></Button>
+                        </form>
+                    </div>
                 </div>
 
-                <!-- Track history -->
-                <div class="lg:col-span-2">
+                <!-- Comments + Track history -->
+                <div class="space-y-6 lg:col-span-2">
+                    <!-- Comments -->
+                    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <h2 class="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                            <MessageSquare class="size-4 text-slate-400" /> Comments
+                            <span v-if="comments.length" class="text-xs font-normal text-slate-400">({{ comments.length }})</span>
+                        </h2>
+
+                        <form class="mb-4 flex items-start gap-2" @submit.prevent="addComment">
+                            <textarea
+                                v-model="newComment"
+                                rows="2"
+                                placeholder="Write a comment…"
+                                maxlength="5000"
+                                class="min-h-9 flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                @keydown.enter.exact.prevent="addComment"
+                            />
+                            <Button type="submit" :disabled="!newComment.trim()"><Send class="size-4" /></Button>
+                        </form>
+
+                        <ul v-if="comments.length" class="space-y-4">
+                            <li v-for="c in comments" :key="c.id" class="group flex gap-3">
+                                <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-semibold text-indigo-700">{{ c.author_initials ?? '?' }}</span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-baseline gap-2">
+                                        <span class="text-sm font-medium text-slate-800">{{ c.author ?? 'Unknown' }}</span>
+                                        <span class="text-xs text-slate-400" :title="formatDate(c.created_at, true)">{{ relativeDate(c.created_at) }}</span>
+                                        <button v-if="c.can_delete" type="button" class="ml-auto text-slate-300 opacity-0 transition hover:text-rose-600 group-hover:opacity-100" aria-label="Delete comment" @click="deleteComment(c)">
+                                            <Trash2 class="size-3.5" />
+                                        </button>
+                                    </div>
+                                    <p class="whitespace-pre-line text-sm text-slate-600">{{ c.body }}</p>
+                                </div>
+                            </li>
+                        </ul>
+                        <p v-else class="text-sm text-slate-400">No comments yet. Start the discussion.</p>
+                    </div>
+
                     <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                         <h2 class="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
                             <History class="size-4 text-slate-400" /> Track history

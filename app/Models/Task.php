@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\Models\Activity;
@@ -66,6 +67,22 @@ class Task extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Checklist (subtask) lines, ordered for display.
+     */
+    public function items(): HasMany
+    {
+        return $this->hasMany(TaskItem::class)->orderBy('position')->orderBy('id');
+    }
+
+    /**
+     * Discussion thread, oldest first.
+     */
+    public function comments(): HasMany
+    {
+        return $this->hasMany(TaskComment::class)->oldest();
     }
 
     /**
