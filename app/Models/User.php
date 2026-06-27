@@ -34,6 +34,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'avatar_path',
         'is_active',
         'last_login_at',
+        'notification_preferences',
     ];
 
     /**
@@ -55,8 +56,17 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'is_active' => 'boolean',
+            'notification_preferences' => 'array',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Whether this user opted to receive email notifications (default: yes).
+     */
+    public function prefersEmail(): bool
+    {
+        return (bool) ($this->notification_preferences['email'] ?? true);
     }
 
     /**

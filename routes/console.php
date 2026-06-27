@@ -2,7 +2,12 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+// Daily deadline reminders for hearings & tasks due in the next 24h.
+// Requires a server cron running `php artisan schedule:run` every minute.
+Schedule::command('app:send-reminders')->dailyAt('08:00');

@@ -10,8 +10,11 @@ use App\Http\Requests\Hearings\UpdateHearingRequest;
 use App\Http\Resources\HearingResource;
 use App\Models\Hearing;
 use App\Models\LegalCase;
+use App\Notifications\HearingScheduledNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -43,12 +46,43 @@ class HearingController extends Controller
 
     public function store(StoreHearingRequest $request): RedirectResponse
     {
-        Hearing::create([
+        $hearing = Hearing::create([
             ...$request->validated(),
             'created_by' => $request->user()->id,
         ]);
 
+        $this->notifyCaseTeam($hearing);
+
         return back()->with('success', 'Hearing scheduled.');
+    }
+
+    /**
+     * Notify the case's lead lawyer & assignees (except the scheduler) that a
+     * hearing was added. Failures are logged & swallowed.
+     */
+    private function notifyCaseTeam(Hearing $hearing): void
+    {
+        $case = LegalCase::with(['leadLawyer', 'assignees'])->find($hearing->case_id);
+
+        if (! $case) {
+            return;
+        }
+
+        $recipients = $case->assignees
+            ->when($case->leadLawyer, fn ($c) => $c->push($case->leadLawyer))
+            ->filter()
+            ->unique('id')
+            ->reject(fn ($u) => $u->id === auth()->id());
+
+        if ($recipients->isEmpty()) {
+            return;
+        }
+
+        try {
+            Notification::send($recipients, new HearingScheduledNotification($hearing, $case));
+        } catch (\Throwable $e) {
+            Log::warning('Hearing notification failed: '.$e->getMessage(), ['hearing_id' => $hearing->id]);
+        }
     }
 
     public function update(UpdateHearingRequest $request, Hearing $hearing): RedirectResponse

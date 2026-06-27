@@ -13,11 +13,13 @@ use App\Http\Resources\TaskResource;
 use App\Models\LegalCase;
 use App\Models\Task;
 use App\Models\User;
+use App\Notifications\TaskAssignedNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -118,7 +120,9 @@ class TaskController extends Controller
         $data['created_by'] = $request->user()->id;
         $data['completed_at'] = $data['status'] === TaskStatus::Done->value ? now() : null;
 
-        Task::create($data);
+        $task = Task::create($data);
+
+        $this->notifyAssignee($task);
 
         return back()->with('success', 'Task created.');
     }
@@ -136,7 +140,14 @@ class TaskController extends Controller
             }
         }
 
+        $previousAssignee = $task->assigned_to;
+
         $task->update($data);
+
+        // Notify the assignee only when the task is (re)assigned to someone new.
+        if (array_key_exists('assigned_to', $data)) {
+            $this->notifyAssignee($task, $previousAssignee);
+        }
 
         // A bare drag/quick-move shouldn't flash a toast; an edit should.
         return $request->boolean('silent')
@@ -200,6 +211,26 @@ class TaskController extends Controller
         });
 
         return back();
+    }
+
+    /**
+     * Notify the task's assignee when it is (re)assigned — but not when a user
+     * assigns a task to themselves, and not on a no-op re-save. Failures are
+     * logged and swallowed so notification issues never break the request.
+     */
+    private function notifyAssignee(Task $task, ?int $previousAssignee = null): void
+    {
+        $assignee = $task->assigned_to;
+
+        if (! $assignee || $assignee === $previousAssignee || $assignee === auth()->id()) {
+            return;
+        }
+
+        try {
+            User::find($assignee)?->notify(new TaskAssignedNotification($task));
+        } catch (\Throwable $e) {
+            Log::warning('Task assignment notification failed: '.$e->getMessage(), ['task_id' => $task->id]);
+        }
     }
 
     /**
