@@ -493,6 +493,9 @@ function confirmDeleteEvent() {
                     </DashboardCard>
 
                     <DashboardCard title="Legal team" :icon="Users" accent="violet" :delay="240">
+                        <template v-if="can('cases.assign')" #action>
+                            <button class="text-xs font-medium text-indigo-600 hover:underline" @click="teamOpen = true">Edit</button>
+                        </template>
                         <div v-if="c.lead_lawyer" class="mb-3 flex items-center gap-2.5">
                             <span class="flex size-9 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">{{ c.lead_lawyer.initials }}</span>
                             <div>
@@ -517,6 +520,7 @@ function confirmDeleteEvent() {
         </div>
 
         <CaseEventForm v-model:open="eventFormOpen" :case-uuid="c.id" :stages="stages" :event="editingEvent" />
+        <CaseTeamDialog v-model:open="teamOpen" :case-id="c.id" :lawyers="lawyers" :selected="assignedIds" />
         <ConfirmDialog
             v-model:open="confirmEventOpen"
             title="Delete this update?"
