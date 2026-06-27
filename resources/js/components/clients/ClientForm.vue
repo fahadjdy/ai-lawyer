@@ -70,12 +70,56 @@ const submit = handleSubmit((values) => {
     });
 });
 
+// ---- Possible-duplicate detection (create only) ----
+interface DupMatch {
+    id: string;
+    name: string;
+    company: string | null;
+    email: string | null;
+    phone: string | null;
+}
+const isCreate = (props.method ?? 'post') === 'post';
+const duplicates = ref<DupMatch[]>([]);
+let dupTimer: ReturnType<typeof setTimeout> | null = null;
+
+function checkDuplicates() {
+    if (!isCreate) return;
+    if (dupTimer) clearTimeout(dupTimer);
+    dupTimer = setTimeout(async () => {
+        const params = new URLSearchParams();
+        if (name.value) params.set('name', String(name.value));
+        if (email.value) params.set('email', String(email.value));
+        if (phone.value) params.set('phone', String(phone.value));
+        if ([...params].length === 0) {
+            duplicates.value = [];
+            return;
+        }
+        try {
+            const res = await fetch(`/clients/duplicates?${params.toString()}`, { headers: { Accept: 'application/json' } });
+            if (res.ok) duplicates.value = (await res.json()).matches ?? [];
+        } catch {
+            /* non-blocking */
+        }
+    }, 400);
+}
+
 const inputClass =
     'h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400';
 </script>
 
 <template>
     <form class="space-y-6" @submit.prevent="submit">
+        <div v-if="duplicates.length" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <p class="font-medium">Possible duplicate{{ duplicates.length > 1 ? 's' : '' }} already in your records:</p>
+            <ul class="mt-1 space-y-0.5">
+                <li v-for="d in duplicates" :key="d.id">
+                    <Link :href="`/clients/${d.id}`" target="_blank" class="font-medium underline hover:no-underline">{{ d.name }}</Link>
+                    <span class="text-amber-600">{{ d.company ? ' · ' + d.company : '' }}{{ d.email ? ' · ' + d.email : '' }}{{ d.phone ? ' · ' + d.phone : '' }}</span>
+                </li>
+            </ul>
+            <p class="mt-1 text-xs text-amber-700">You can still create this client if it's a different person.</p>
+        </div>
+
         <!-- Identity -->
         <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 class="mb-4 text-sm font-semibold text-slate-900">Client details</h2>
@@ -89,7 +133,7 @@ const inputClass =
                 </div>
                 <div>
                     <Label for="name">Name</Label>
-                    <Input id="name" v-model="name" placeholder="e.g. Rajesh Sharma" />
+                    <Input id="name" v-model="name" placeholder="e.g. Rajesh Sharma" @blur="checkDuplicates" />
                     <InputError :message="errors.name" />
                 </div>
                 <div class="md:col-span-2">
@@ -106,12 +150,12 @@ const inputClass =
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                     <Label for="email">Email</Label>
-                    <Input id="email" v-model="email" type="email" />
+                    <Input id="email" v-model="email" type="email" @blur="checkDuplicates" />
                     <InputError :message="errors.email" />
                 </div>
                 <div>
                     <Label for="phone">Phone</Label>
-                    <Input id="phone" v-model="phone" />
+                    <Input id="phone" v-model="phone" @blur="checkDuplicates" />
                     <InputError :message="errors.phone" />
                 </div>
                 <div>

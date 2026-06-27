@@ -9,6 +9,7 @@ use App\Http\Requests\Clients\StoreClientRequest;
 use App\Http\Requests\Clients\UpdateClientRequest;
 use App\Models\Client;
 use App\Models\Document;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -93,6 +94,113 @@ class ClientController extends Controller
 
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * Bulk-import clients from an uploaded CSV (mirrors the export columns).
+     * Rows whose email already exists are skipped.
+     */
+    public function import(Request $request): RedirectResponse
+    {
+        $this->authorize('create', Client::class);
+
+        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+
+        $handle = fopen($request->file('file')->getRealPath(), 'rb');
+        if ($handle === false || ($header = fgetcsv($handle)) === false) {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+
+            return back()->with('error', 'The CSV could not be read or was empty.');
+        }
+
+        $map = [];
+        foreach ($header as $i => $col) {
+            $map[strtolower(trim((string) $col))] = $i;
+        }
+        $get = fn (array $row, string $key): string => isset($map[$key]) ? trim((string) ($row[$map[$key]] ?? '')) : '';
+
+        $seenEmails = Client::query()->whereNotNull('email')->pluck('email')
+            ->mapWithKeys(fn ($e): array => [strtolower((string) $e) => true])->all();
+
+        $created = 0;
+        $skipped = 0;
+        while (($row = fgetcsv($handle)) !== false) {
+            $name = $get($row, 'name');
+            if ($name === '') {
+                continue;
+            }
+
+            $email = $get($row, 'email');
+            if ($email !== '' && isset($seenEmails[strtolower($email)])) {
+                $skipped++;
+
+                continue;
+            }
+
+            Client::create([
+                'type' => (ClientType::tryFrom(strtolower($get($row, 'type'))) ?? ClientType::Individual)->value,
+                'name' => mb_substr($name, 0, 255),
+                'company' => $get($row, 'company') ?: null,
+                'email' => $email ?: null,
+                'phone' => $get($row, 'phone') ?: null,
+                'city' => $get($row, 'city') ?: null,
+                'state' => $get($row, 'state') ?: null,
+                'pan' => $get($row, 'pan') ?: null,
+                'gstin' => $get($row, 'gstin') ?: null,
+                'created_by' => $request->user()->id,
+            ]);
+
+            if ($email !== '') {
+                $seenEmails[strtolower($email)] = true;
+            }
+            $created++;
+        }
+        fclose($handle);
+
+        return back()->with('success', "Imported {$created} client(s)".($skipped > 0 ? ", skipped {$skipped} duplicate(s)." : '.'));
+    }
+
+    /**
+     * Possible duplicate matches for the new-client form (by email, phone or
+     * name) — surfaced as a soft warning so the user can still proceed.
+     */
+    public function duplicates(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Client::class);
+
+        $name = trim((string) $request->query('name'));
+        $email = trim((string) $request->query('email'));
+        $phone = trim((string) $request->query('phone'));
+
+        if (mb_strlen($name) < 3 && $email === '' && $phone === '') {
+            return response()->json(['matches' => []]);
+        }
+
+        $matches = Client::query()
+            ->where(function ($q) use ($name, $email, $phone): void {
+                if ($email !== '') {
+                    $q->orWhere('email', $email);
+                }
+                if ($phone !== '') {
+                    $q->orWhere('phone', $phone);
+                }
+                if (mb_strlen($name) >= 3) {
+                    $q->orWhere('name', 'like', "%{$name}%");
+                }
+            })
+            ->limit(5)
+            ->get(['uuid', 'name', 'company', 'email', 'phone'])
+            ->map(fn (Client $c): array => [
+                'id' => $c->uuid,
+                'name' => $c->name,
+                'company' => $c->company,
+                'email' => $c->email,
+                'phone' => $c->phone,
+            ]);
+
+        return response()->json(['matches' => $matches]);
     }
 
     public function show(Client $client): Response

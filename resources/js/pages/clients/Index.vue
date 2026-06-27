@@ -11,12 +11,14 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useFilters } from '@/composables/useFilters';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem, EnumOption, Paginated } from '@/types';
-import { Head, Link, router } from '@inertiajs/vue3';
-import { Download, MoreHorizontal, Plus, Search } from 'lucide-vue-next';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Download, MoreHorizontal, Plus, Search, Upload } from 'lucide-vue-next';
 import { ref } from 'vue';
 
 interface ClientRow {
@@ -52,6 +54,23 @@ const columns: Column[] = [
 
 const open = (row: ClientRow) => router.visit(`/clients/${row.id}`);
 
+// ---- CSV import ----
+const importOpen = ref(false);
+const importForm = useForm<{ file: File | null }>({ file: null });
+function onImportFile(e: Event) {
+    importForm.file = (e.target as HTMLInputElement).files?.[0] ?? null;
+}
+function submitImport() {
+    importForm.post('/clients/import', {
+        preserveScroll: true,
+        forceFormData: true,
+        onSuccess: () => {
+            importOpen.value = false;
+            importForm.reset();
+        },
+    });
+}
+
 // Delete flow
 const confirmOpen = ref(false);
 const deleting = ref<ClientRow | null>(null);
@@ -78,6 +97,7 @@ function confirmDelete() {
             <PageHeader title="Clients" description="People and organizations your firm represents.">
                 <template #actions>
                     <Button variant="outline" as-child><a href="/clients/export"><Download class="size-4" /> Export CSV</a></Button>
+                    <Button v-if="can.create" variant="outline" @click="importOpen = true"><Upload class="size-4" /> Import CSV</Button>
                     <Button v-if="can.create" as-child><Link href="/clients/create"><Plus class="size-4" /> New client</Link></Button>
                 </template>
             </PageHeader>
@@ -135,5 +155,28 @@ function confirmDelete() {
             confirm-label="Delete client"
             @confirm="confirmDelete"
         />
+
+        <Dialog :open="importOpen" @update:open="importOpen = $event">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Import clients from CSV</DialogTitle>
+                    <DialogDescription>
+                        Columns: Name, Company, Type, Email, Phone, City, State, PAN, GSTIN. Rows whose email already exists are skipped. (Tip: export first to get the format.)
+                    </DialogDescription>
+                </DialogHeader>
+                <div class="space-y-4">
+                    <div>
+                        <Label for="csv">CSV file</Label>
+                        <input id="csv" type="file" accept=".csv,text/csv" class="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm" @change="onImportFile" />
+                        <p v-if="importForm.errors.file" class="mt-1 text-xs text-rose-600">{{ importForm.errors.file }}</p>
+                        <p v-if="importForm.progress" class="mt-1 text-xs text-slate-400">Uploading… {{ Math.round(importForm.progress.percentage ?? 0) }}%</p>
+                    </div>
+                    <div class="flex justify-end gap-3">
+                        <Button variant="outline" @click="importOpen = false">Cancel</Button>
+                        <Button :disabled="importForm.processing || !importForm.file" @click="submitImport">Import</Button>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>
