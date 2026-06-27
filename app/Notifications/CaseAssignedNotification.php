@@ -6,11 +6,10 @@ namespace App\Notifications;
 
 use App\Models\LegalCase;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class CaseAssignedNotification extends Notification implements ShouldQueue
+class CaseAssignedNotification extends Notification
 {
     use Queueable;
 

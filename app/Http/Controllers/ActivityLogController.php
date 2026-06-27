@@ -14,7 +14,10 @@ class ActivityLogController extends Controller
 {
     public function index(Request $request): Response
     {
-        $teamUserIds = User::query()->pluck('id');
+        // Audit trail is scoped to this firm's own members only.
+        $teamUserIds = User::query()
+            ->where('team_id', $request->user()->team_id)
+            ->pluck('id');
 
         $activities = Activity::query()
             ->with('causer:id,uuid,name')

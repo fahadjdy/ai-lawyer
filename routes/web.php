@@ -23,7 +23,6 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TemplateController;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -33,7 +32,7 @@ Route::get('/', function () {
         : Inertia::render('Welcome');
 })->name('home');
 
-Route::middleware(['auth'])->group(function (): void {
+Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Global command-palette search (⌘K) — JSON, queried as-you-type.
@@ -112,7 +111,7 @@ Route::middleware(['auth'])->group(function (): void {
         Route::put('roles/{role}', [RoleController::class, 'update'])->name('roles.update');
     });
 
-    Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
+    Route::get('activity', [ActivityLogController::class, 'index'])->middleware('can:audit.view')->name('activity.index');
 
     // Legal Notebook — read-only quick reference of Indian statutes & sections.
     Route::get('legal-notebook', [LegalNotebookController::class, 'index'])->name('legal-notebook.index');
@@ -149,51 +148,6 @@ Route::middleware(['auth'])->group(function (): void {
     Route::put('notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::put('notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
 });
-
-/*
-|--------------------------------------------------------------------------
-| One-time deploy helper — migrate + seed via browser (NO TOKEN / NO AUTH)
-|--------------------------------------------------------------------------
-| Shared hosting par jab terminal access na ho tab use karo. Browser me kholo:
-|     https://lexcase.fahad-jadiya.com/deploy/migrate-seed
-|
-| Optional: fresh start (saari tables drop karke dobara banao + seed):
-|     https://lexcase.fahad-jadiya.com/deploy/migrate-seed?fresh=1   ⚠️ DATA WIPE
-|
-| ⚠️ SECURITY: Ye route bina login/token ke migrations + seeders chalata hai.
-| Setup complete hote hi ISE DELETE / COMMENT kar do aur deploy kar do —
-| warna koi bhi is URL ko hit karke poora database reset kar sakta hai.
-*/
-Route::get('deploy/migrate-seed', function () {
-    @set_time_limit(0);
-    @ini_set('memory_limit', '512M');
-
-    $log = [];
-
-    $run = function (string $command, array $params = []) use (&$log): void {
-        try {
-            Artisan::call($command, $params);
-            $log[] = "===== php artisan {$command} =====\n".trim(Artisan::output());
-        } catch (\Throwable $e) {
-            $log[] = "===== php artisan {$command} (FAILED) =====\n".$e->getMessage();
-        }
-    };
-
-    if (request()->boolean('fresh')) {
-        $run('migrate:fresh', ['--force' => true, '--seed' => true]);
-    } else {
-        $run('migrate', ['--force' => true]);
-        $run('db:seed', ['--force' => true]);
-    }
-
-    $run('storage:link');
-    $run('optimize:clear');
-
-    return response('<pre style="font:14px/1.5 monospace;padding:16px">'
-        .e(implode("\n\n", $log))
-        ."\n\n✅ Done. Ab is route ko routes/web.php se DELETE karke dobara deploy karo.</pre>")
-        ->header('Content-Type', 'text/html; charset=UTF-8');
-})->name('deploy.migrate-seed');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

@@ -6,17 +6,17 @@ namespace App\Listeners;
 
 use App\Events\CaseCreated;
 use App\Notifications\CaseAssignedNotification;
-use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 /**
- * Reacts to a new case by notifying the lead lawyer and assignees. Implements
- * ShouldQueue so notification fan-out never blocks the HTTP request.
+ * Reacts to a new case by notifying the lead lawyer and assignees. Runs
+ * synchronously — this deployment has no queue worker, so deferring delivery
+ * would silently drop notifications. Failures (e.g. SMTP down) are logged and
+ * swallowed so notification delivery never breaks case creation.
  */
-class SendCaseAssignmentNotifications implements ShouldQueue
+class SendCaseAssignmentNotifications
 {
-    public string $queue = 'notifications';
-
     public function handle(CaseCreated $event): void
     {
         $case = $event->case;
@@ -27,8 +27,14 @@ class SendCaseAssignmentNotifications implements ShouldQueue
             $recipients->push($case->leadLawyer);
         }
 
-        if ($recipients->isNotEmpty()) {
+        if ($recipients->isEmpty()) {
+            return;
+        }
+
+        try {
             Notification::send($recipients, new CaseAssignedNotification($case));
+        } catch (\Throwable $e) {
+            Log::warning('Case assignment notification failed: '.$e->getMessage(), ['case_id' => $case->id]);
         }
     }
 }
