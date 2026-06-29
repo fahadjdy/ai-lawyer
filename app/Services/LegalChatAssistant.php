@@ -74,17 +74,17 @@ class LegalChatAssistant
             $this->attachEvidence($messages, is_array($case['attachments'] ?? null) ? $case['attachments'] : []);
         }
 
-        $full = '';
-        $onDelta = function (string $d) use ($emit, &$full): void {
-            $full .= $d;
-            $emit('delta', ['text' => $d]);
-        };
-
         // Stream the reply with tools available DURING streaming, looping through
         // any tool calls until a final written answer is produced.
-        $this->runAgentic($system, $messages, $user, $emit, $citations, $onDelta);
+        $agentic = $this->runAgentic($system, $messages, $user, $emit, $citations);
 
-        return ['content' => $full, 'citations' => $this->dedupeCitations($citations)];
+        return [
+            'content' => $agentic['content'],
+            'citations' => $this->dedupeCitations($citations),
+            // True when a backend error interrupted us after some text had streamed,
+            // so the controller can mark the saved reply as unfinished.
+            'incomplete' => $agentic['incomplete'],
+        ];
     }
 
     /**
@@ -101,9 +101,16 @@ class LegalChatAssistant
      *
      * @param  array<int, array<string, mixed>>  $messages
      * @param  array<int, array<string, mixed>>  $citations
+     * @return array{content: string, incomplete: bool}
      */
-    private function runAgentic(string $system, array &$messages, User $user, callable $emit, array &$citations, callable $onDelta): void
+    private function runAgentic(string $system, array &$messages, User $user, callable $emit, array &$citations): array
     {
+        $full = '';
+        $onDelta = function (string $d) use ($emit, &$full): void {
+            $full .= $d;
+            $emit('delta', ['text' => $d]);
+        };
+
         $tools = $this->tools->specs();
 
         for ($round = 0; ; $round++) {
@@ -112,19 +119,29 @@ class LegalChatAssistant
             try {
                 $result = $this->ai->stream($system, $messages, 1600, $onDelta, $offerTools ? $tools : []);
             } catch (RuntimeException $e) {
-                // A first-round failure (e.g. missing API key) has produced nothing —
-                // surface it. A later-round failure keeps whatever already streamed.
-                if ($round === 0) {
+                // Nothing usable streamed yet → let the controller surface the error
+                // (and clear the dangling prompt). If we already streamed part of an
+                // answer, keep it but flag it as interrupted, rather than silently
+                // passing an unfinished lead-in off as a complete reply.
+                if ($full === '') {
                     throw $e;
                 }
 
-                return;
+                return ['content' => $full, 'incomplete' => true];
             }
 
-            // A final written answer, an aborted stream, or no tools left to call
-            // (budget spent) all end the loop.
-            if (! $offerTools || ($result['finish'] ?? '') !== 'tool_use' || $result['tool_calls'] === []) {
-                return;
+            $finish = $result['finish'] ?? '';
+
+            // Run tools when the model asked for them — including when it was cut off
+            // by max_tokens mid-turn but still emitted a tool call (treat 'max_tokens'
+            // like 'tool_use' here so the call isn't silently dropped). On the final
+            // (no-tools) round, or a clean/aborted finish, we stop with what we have.
+            $wantsTools = $offerTools
+                && $result['tool_calls'] !== []
+                && in_array($finish, ['tool_use', 'max_tokens'], true);
+
+            if (! $wantsTools) {
+                return ['content' => $full, 'incomplete' => false];
             }
 
             // Replay the model's tool_use turn, then feed back each tool result.
@@ -147,9 +164,39 @@ class LegalChatAssistant
             }
             $messages[] = ['role' => 'user', 'content' => $results];
 
+            // Heavy image/PDF attachments only need to be seen once. Drop them from
+            // the history after the first round so they aren't re-uploaded (and
+            // re-billed as fresh input tokens) on every tool-continuation round.
+            if ($round === 0) {
+                $this->stripHeavyAttachments($messages);
+            }
+
             // Keep the progress indicator meaningful until the next text delta lands.
             $emit('status', ['text' => 'Reviewing the results and writing your answer']);
         }
+    }
+
+    /**
+     * Replace any image / PDF blocks in the message history with a short text
+     * placeholder, so large base64 attachments are sent to the model only once
+     * (on the first round) instead of being re-uploaded on every tool round.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     */
+    private function stripHeavyAttachments(array &$messages): void
+    {
+        foreach ($messages as &$message) {
+            if (! is_array($message['content'] ?? null)) {
+                continue;
+            }
+            foreach ($message['content'] as &$block) {
+                if (in_array($block['type'] ?? '', ['image', 'document'], true)) {
+                    $block = ['type' => 'text', 'text' => '[An evidence file was shown earlier in this conversation.]'];
+                }
+            }
+            unset($block);
+        }
+        unset($message);
     }
 
     /**

@@ -236,10 +236,18 @@ class ChatController extends Controller
             $content = trim($result['content']);
 
             if ($content === '') {
-                // Stopped before any text (or empty) — keep the prompt, save no reply.
-                $emit('done', ['reply' => null, 'session' => $this->sessionMeta($session)]);
+                // The model produced no usable text — surface it instead of silently
+                // dropping the bubble. (If the client already disconnected, the emit
+                // is a no-op, so a user-initiated Stop still won't show an error.)
+                $emit('error', ['message' => 'The assistant could not generate a reply. Please try again.']);
 
                 return;
+            }
+
+            // A backend error cut the reply short after some text had streamed: keep
+            // what we have, but mark it so it doesn't masquerade as a finished answer.
+            if ($result['incomplete'] ?? false) {
+                $content .= "\n\n*⚠️ This reply was interrupted before it finished — tap regenerate to retry.*";
             }
 
             $assistantMessage = $session->messages()->create([

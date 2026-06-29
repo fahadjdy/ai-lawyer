@@ -505,13 +505,14 @@ function confirmDelete() {
                                         >
                                             <template v-if="m.role === 'assistant'">
                                                 <MarkdownMessage v-if="m.content" :content="m.content" />
-                                                <!-- Live progress: current action + indeterminate bar -->
-                                                <div
-                                                    v-if="m.streaming && (m.status || !m.content)"
-                                                    class="ai-progress"
-                                                    :class="m.content ? 'mt-3' : ''"
-                                                >
-                                                    <div class="flex items-center gap-2 text-xs font-medium text-indigo-700">
+                                                <!-- Live progress: stays visible the whole time the assistant is
+                                                     working, so the bar never flickers out mid-tool-call. The
+                                                     status line shows the current action (or while still waiting). -->
+                                                <div v-if="m.streaming" class="ai-progress" :class="m.content ? 'mt-3' : ''">
+                                                    <div
+                                                        v-if="m.status || !m.content"
+                                                        class="flex items-center gap-2 text-xs font-medium text-indigo-700"
+                                                    >
                                                         <Loader2 class="size-3.5 shrink-0 animate-spin" />
                                                         <span class="line-clamp-1">{{ m.status || 'Thinking…' }}</span>
                                                     </div>
